@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<!--
+  OMS 登录页 · 静态交互原型
+  ------------------------------------------------------------------
+  对应需求：M02 登录管理（FR-AUTH-001 账号登录/密码认证、FR-AUTH-005 验证码生成与校验）
+            M11 通用（FR-COM-001 国际化、FR-COM-004 Logo 修改）
+  说明：单文件静态原型，纯 HTML + CSS + 原生 JS，无外部依赖，可离线双击打开。
+        含一处「原型说明」浮层（data-prototype），仅用于评审演示，交付视觉稿时可整段删除。
+  ------------------------------------------------------------------
+  页面结构：
+    左上角  Logo（可被 FR-COM-004 上传的 Logo 替换）
+    右上角  中英文切换
+    左半区  品牌装饰区（暂不含文案，仅保留底纹与装饰图形；右半区登录卡片仍位于页面右侧中部）
+    右半区  登录卡片，垂直居中：欢迎语 + 用户名 + 密码 +（视情况出现的）验证码
+    底部    版权信息
+  ------------------------------------------------------------------
+  状态覆盖：
+    ① 初始态：仅用户名 + 密码
+    ② 校验失败态：字段级提示（请输入用户名 / 密码）
+    ③ 认证失败态：表单级统一提示（不暴露账户是否存在），累计失败次数
+    ④ 验证码态：连续失败达到策略阈值后，验证码字段在密码框下方展开
+    ⑤ 成功态：登录成功提示 + 按钮 loading
+-->
+<html lang="zh-CN" data-lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light" />
+<title>登录 · ModelEngine</title>
+<style>
+  /* ===================== 设计变量 ===================== */
+  :root{
+    --brand-500:#2E7CF6;
+    --brand-600:#1668DC;
+    --brand-700:#0F55BC;
+    --brand-soft:#EDF4FF;
+
+    --text-1:#1B1F27;
+    --text-2:#5A6472;
+    --text-3:#8B95A5;
+    --text-4:#AEB6C2;
+
+    --line:#E4E9F2;
+    --line-strong:#CBD5E5;
+
+    --danger:#D9382F;
+    --danger-bg:#FEF2F1;
+    --danger-line:#FBD9D6;
+
+    --success:#0E9F6E;
+    --success-bg:#EBF9F3;
+    --success-line:#C9EEDF;
+
+    --radius-sm:8px;
+    --radius:10px;
+    --radius-lg:16px;
+
+    --shadow-card:0 20px 52px rgba(21,44,94,.10), 0 2px 10px rgba(21,44,94,.05);
+    --shadow-focus:0 0 0 3px rgba(46,124,246,.14);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB","Helvetica Neue",Arial,"Noto Sans SC",sans-serif;
+    color:var(--text-1);
+    background:#FBFCFE;
+    -webkit-font-smoothing:antialiased;
+  }
+  [hidden]{ display:none !important; }
+  button{ font-family:inherit; }
+
+  /* ===================== 页面骨架 ===================== */
+  .page{
+    position:relative;
+    min-height:100vh;
+    display:grid;
+    grid-template-columns:1.06fr .94fr;
+  }
+
+  /* ---------- 顶部：Logo + 语言切换 ---------- */
+  .topbar{
+    position:absolute;
+    top:0; left:0; right:0;
+    z-index:5;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:26px 40px;
+    pointer-events:none;
+  }
+  .topbar > *{ pointer-events:auto; }
+
+  /* Logo：默认内置图形标；生产实现时可整体替换为 FR-COM-004 上传的 Logo 图片 */
+  .logo{
+    display:inline-flex;
+    align-items:center;
+    gap:10px;
+    text-decoration:none;
+    color:inherit;
+  }
+  .logo-mark{ display:inline-flex; width:34px; height:34px; }
+  .logo-name{
+    font-size:19px;
+    font-weight:650;
+    letter-spacing:.2px;
+    color:var(--text-1);
+  }
+
+  /* 语言切换 */
+  .lang-switch{
+    display:inline-flex;
+    align-items:center;
+    gap:2px;
+    padding:3px;
+    border:1px solid var(--line);
+    border-radius:999px;
+    background:rgba(255,255,255,.86);
+    backdrop-filter:saturate(1.4) blur(6px);
+    box-shadow:0 1px 2px rgba(21,44,94,.04);
+  }
+  .lang-btn{
+    min-width:52px;
+    height:28px;
+    padding:0 12px;
+    border:0;
+    border-radius:999px;
+    background:transparent;
+    color:var(--text-2);
+    font-size:13px;
+    line-height:1;
+    cursor:pointer;
+    transition:background .18s ease, color .18s ease;
+  }
+  .lang-btn:hover{ color:var(--brand-600); }
+  .lang-btn.is-active{
+    background:var(--brand-600);
+    color:#fff;
+    font-weight:600;
+  }
+  .lang-btn:focus-visible{ outline:2px solid var(--brand-500); outline-offset:2px; }
+
+  /* ---------- 左半区：品牌装饰区（暂不放文案，仅保留底纹与装饰图形） ---------- */
+  .brand{
+    position:relative;
+    overflow:hidden;
+    background:
+      radial-gradient(760px 520px at 6% 2%, #E3EEFF 0%, rgba(227,238,255,0) 60%),
+      radial-gradient(620px 480px at 92% 98%, #E7F6F1 0%, rgba(231,246,241,0) 62%),
+      linear-gradient(180deg,#F4F7FD 0%,#FBFCFE 100%);
+  }
+  /* 点阵纹理 */
+  .brand::before{
+    content:"";
+    position:absolute; inset:0;
+    background-image:radial-gradient(rgba(22,104,220,.17) 1px, transparent 1.2px);
+    background-size:22px 22px;
+    -webkit-mask-image:radial-gradient(560px 440px at 24% 34%, #000 0%, transparent 74%);
+    mask-image:radial-gradient(560px 440px at 24% 34%, #000 0%, transparent 74%);
+  }
+  /* 装饰图形 */
+  .brand-art{
+    position:absolute;
+    left:50%; top:50%;
+    transform:translate(-50%,-50%);
+    width:min(80%,500px); height:auto;
+    opacity:.9;
+    pointer-events:none;
+  }
+
+  /* ---------- 右半区：登录 ---------- */
+  .login-area{
+    display:flex;
+    flex-direction:column;
+    padding:92px 8% 26px;
+    background:#FBFCFE;
+  }
+  .login-main{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .login-card{
+    width:100%;
+    max-width:412px;
+    padding:40px 40px 36px;
+    border:1px solid #EDF1F8;
+    border-radius:var(--radius-lg);
+    background:#fff;
+    box-shadow:var(--shadow-card);
+  }
+  .welcome{
+    margin:0 0 8px;
+    font-size:25px;
+    line-height:1.35;
+    font-weight:650;
+    letter-spacing:.2px;
+  }
+  .welcome-brand{ color:var(--brand-600); }
+  .welcome-sub{
+    margin:0 0 30px;
+    font-size:13.5px;
+    line-height:1.6;
+    color:var(--text-3);
+  }
+
+  /* ---------- 表单字段 ---------- */
+  .field{ margin-bottom:18px; }
+  .label{
+    display:block;
+    margin-bottom:8px;
+    font-size:13px;
+    font-weight:550;
+    color:var(--text-2);
+  }
+  .input-wrap{ position:relative; }
+  .input-icon{
+    position:absolute;
+    left:13px; top:50%;
+    transform:translateY(-50%);
+    width:16px; height:16px;
+    color:var(--text-4);
+    pointer-events:none;
+    transition:color .18s ease;
+  }
+  .input{
+    width:100%;
+    height:44px;
+    padding:0 14px 0 38px;
+    border:1px solid var(--line-strong);
+    border-radius:var(--radius);
+    background:#fff;
+    color:var(--text-1);
+    font-size:14px;
+    line-height:normal;
+    transition:border-color .18s ease, box-shadow .18s ease, background .18s ease;
+  }
+  .input::placeholder{ color:var(--text-4); }
+  .input:hover{ border-color:#B6C4DA; }
+  .input:focus{
+    outline:none;
+    border-color:var(--brand-500);
+    box-shadow:var(--shadow-focus);
+  }
+  .input-wrap:focus-within .input-icon{ color:var(--brand-500); }
+  .input-wrap.has-error .input{ border-color:var(--danger); }
+  .input-wrap.has-error .input:focus{ box-shadow:0 0 0 3px rgba(217,56,47,.12); }
+  .input-wrap.has-error .input-icon{ color:var(--danger); }
+
+  /* 明文/密文切换 */
+  .pwd-toggle{
+    position:absolute;
+    right:6px; top:50%;
+    transform:translateY(-50%);
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:32px; height:32px;
+    border:0; border-radius:8px;
+    background:transparent;
+    color:var(--text-3);
+    cursor:pointer;
+  }
+  .pwd-toggle:hover{ background:#F3F6FB; color:var(--brand-600); }
+  .pwd-toggle:focus-visible{ outline:2px solid var(--brand-500); outline-offset:1px; }
+  .pwd-toggle svg{ width:17px; height:17px; }
+
+  .field-error{
+    display:none;
+    margin:7px 0 0;
+    font-size:12.5px;
+    line-height:1.5;
+    color:var(--danger);
+  }
+  .field-error.is-visible{ display:block; }
+
+  /* ---------- 验证码（视情况出现） ---------- */
+  .captcha-field{
+    padding-top:2px;
+    animation:fieldIn .28s cubic-bezier(.22,.61,.36,1) both;
+  }
+  @keyframes fieldIn{
+    from{ opacity:0; transform:translateY(-6px); }
+    to{ opacity:1; transform:none; }
+  }
+  .captcha-hint{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    margin:0 0 10px;
+    padding:8px 10px;
+    border-radius:var(--radius-sm);
+    background:var(--brand-soft);
+    color:#2C5AA8;
+    font-size:12.5px;
+    line-height:1.5;
+  }
+  .captcha-hint svg{ width:14px; height:14px; flex:none; }
+  .captcha-row{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) 108px 32px;
+    gap:8px;
+    align-items:center;
+  }
+  .captcha-row .input{ padding-left:38px; letter-spacing:2px; text-transform:uppercase; }
+  .captcha-img{
+    height:44px;
+    padding:0;
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    background:#F1F5FB;
+    cursor:pointer;
+    overflow:hidden;
+    line-height:0;
+  }
+  .captcha-img:hover{ border-color:var(--brand-500); }
+  .captcha-img:focus-visible{ outline:2px solid var(--brand-500); outline-offset:1px; }
+  .captcha-img svg{ display:block; width:100%; height:100%; }
+  .captcha-refresh{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:32px; height:32px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:#fff;
+    color:var(--text-3);
+    cursor:pointer;
+  }
+  .captcha-refresh:hover{ border-color:var(--brand-500); color:var(--brand-600); }
+  .captcha-refresh:focus-visible{ outline:2px solid var(--brand-500); outline-offset:1px; }
+  .captcha-refresh svg{ width:15px; height:15px; }
+  .captcha-refresh.is-spinning svg{ animation:spin .5s ease; }
+  @keyframes spin{ from{ transform:rotate(0); } to{ transform:rotate(360deg); } }
+
+  /* ---------- 表单级提示 ---------- */
+  .form-message{
+    display:flex;
+    align-items:flex-start;
+    gap:8px;
+    margin:4px 0 16px;
+    padding:10px 12px;
+    border:1px solid transparent;
+    border-radius:var(--radius-sm);
+    font-size:13px;
+    line-height:1.55;
+  }
+  .form-message svg{ width:15px; height:15px; flex:none; margin-top:1px; }
+  .form-message.is-error{
+    border-color:var(--danger-line);
+    background:var(--danger-bg);
+    color:var(--danger);
+  }
+  .form-message.is-success{
+    border-color:var(--success-line);
+    background:var(--success-bg);
+    color:var(--success);
+  }
+
+  /* ---------- 提交按钮 ---------- */
+  .submit-btn{
+    position:relative;
+    width:100%;
+    height:46px;
+    margin-top:6px;
+    border:0;
+    border-radius:var(--radius);
+    background:linear-gradient(180deg,var(--brand-500) 0%,var(--brand-600) 100%);
+    color:#fff;
+    font-size:15px;
+    font-weight:600;
+    letter-spacing:.5px;
+    cursor:pointer;
+    box-shadow:0 6px 16px rgba(22,104,220,.22);
+    transition:filter .18s ease, box-shadow .18s ease, transform .06s ease;
+  }
+  .submit-btn:hover:not(:disabled){ filter:brightness(1.06); }
+  .submit-btn:active:not(:disabled){ transform:translateY(1px); }
+  .submit-btn:focus-visible{ outline:2px solid var(--brand-700); outline-offset:2px; }
+  .submit-btn:disabled{ cursor:default; filter:saturate(.6) brightness(1.02); box-shadow:none; }
+  .spinner{
+    display:inline-block;
+    width:14px; height:14px;
+    margin-right:8px;
+    border:2px solid rgba(255,255,255,.45);
+    border-top-color:#fff;
+    border-radius:50%;
+    vertical-align:-2px;
+    animation:spin .7s linear infinite;
+  }
+
+  .page-footer{
+    padding-top:22px;
+    text-align:center;
+    font-size:12px;
+    color:var(--text-3);
+  }
+
+  /* ===================== 原型说明浮层（仅原型使用） ===================== */
+  .proto{ position:fixed; right:18px; bottom:18px; z-index:50; font-size:12.5px; }
+  .proto-toggle{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    height:32px;
+    padding:0 12px;
+    border:1px solid rgba(255,255,255,.14);
+    border-radius:999px;
+    background:rgba(27,31,39,.86);
+    color:#fff;
+    cursor:pointer;
+    backdrop-filter:blur(6px);
+  }
+  .proto-toggle:hover{ background:rgba(27,31,39,.95); }
+  .proto-panel{
+    width:262px;
+    margin-bottom:8px;
+    padding:14px;
+    border-radius:12px;
+    background:rgba(27,31,39,.94);
+    color:#E7ECF5;
+    box-shadow:0 12px 32px rgba(12,20,40,.28);
+    backdrop-filter:blur(8px);
+  }
+  .proto-panel h4{ margin:0 0 10px; font-size:13px; color:#fff; }
+  .proto-panel p{ margin:0 0 8px; line-height:1.6; color:#B9C4D6; }
+  .proto-panel code{ color:#8FC0FF; }
+  .proto-row{ display:flex; align-items:center; gap:8px; margin:0 0 10px; color:#DCE4F0; cursor:pointer; }
+  .proto-row input{ accent-color:#2E7CF6; }
+  .proto-reset{
+    width:100%;
+    height:30px;
+    border:1px solid rgba(255,255,255,.18);
+    border-radius:8px;
+    background:transparent;
+    color:#DCE4F0;
+    cursor:pointer;
+  }
+  .proto-reset:hover{ background:rgba(255,255,255,.08); }
+
+  /* ===================== 响应式 ===================== */
+  @media (max-width:1100px){
+    .login-card{ padding:34px 30px 30px; }
+  }
+  @media (max-width:920px){
+    .page{ grid-template-columns:1fr; }
+    .brand{ display:none; }
+    .login-area{ padding:92px 24px 24px; }
+    .login-card{ margin:0 auto; }
+  }
+  @media (max-width:520px){
+    .topbar{ padding:18px 20px; }
+    .logo-name{ font-size:17px; }
+    .login-card{ padding:28px 20px 24px; border-radius:14px; }
+    .welcome{ font-size:22px; }
+    .captcha-row{ grid-template-columns:minmax(0,1fr) 96px 32px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- ==================== 顶部：Logo + 语言切换 ==================== -->
+  <header class="topbar">
+    <!-- Logo：可被系统管理员上传的品牌 Logo 整体替换（M11 FR-COM-004） -->
+    <a class="logo" href="#" aria-label="ModelEngine">
+      <span class="logo-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="34" height="34" role="img">
+          <defs>
+            <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#3B8CFF"/>
+              <stop offset="1" stop-color="#1668DC"/>
+            </linearGradient>
+          </defs>
+          <rect width="32" height="32" rx="9" fill="url(#logoGrad)"/>
+          <path d="M9.5 22V10.5l6.5 6 6.5-6V22" fill="none" stroke="#fff"
+                stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span class="logo-name">ModelEngine</span>
+    </a>
+
+    <!-- 中英文切换 -->
+    <div class="lang-switch" role="group" aria-label="语言切换 / Switch language">
+      <button type="button" class="lang-btn is-active" data-lang="zh-CN">中文</button>
+      <button type="button" class="lang-btn" data-lang="en-US">EN</button>
+    </div>
+  </header>
+
+  <!-- ==================== 左半区：品牌装饰区（文案已移除，保留视觉底纹） ==================== -->
+  <section class="brand" aria-hidden="true">
+    <!-- 装饰图形 -->
+    <svg class="brand-art" viewBox="0 0 520 520" fill="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="artRing" x1="90" y1="70" x2="430" y2="460" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#2E7CF6" stop-opacity=".40"/>
+          <stop offset="1" stop-color="#0E9F6E" stop-opacity=".14"/>
+        </linearGradient>
+        <linearGradient id="artNode" x1="0" y1="0" x2="1" y2="1">
+          <stop stop-color="#5AA0FF"/>
+          <stop offset="1" stop-color="#1668DC"/>
+        </linearGradient>
+        <radialGradient id="artGlow" cx=".5" cy=".5" r=".5">
+          <stop stop-color="#2E7CF6" stop-opacity=".16"/>
+          <stop offset="1" stop-color="#2E7CF6" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <circle cx="260" cy="280" r="228" fill="url(#artGlow)"/>
+      <circle cx="260" cy="280" r="196" stroke="url(#artRing)" stroke-width="1.2" stroke-dasharray="4 9"/>
+      <circle cx="260" cy="280" r="138" stroke="url(#artRing)" stroke-width="1.2"/>
+      <circle cx="260" cy="280" r="84"  stroke="url(#artRing)" stroke-width="1.2" stroke-dasharray="2 7"/>
+      <g stroke="#1668DC" stroke-opacity=".26" stroke-width="1.2">
+        <path d="M260 84 L404 356"/><path d="M404 356 L116 388"/><path d="M116 388 L260 84"/>
+        <path d="M260 84 L260 476"/><path d="M404 356 L188 196"/><path d="M116 388 L332 168"/>
+      </g>
+      <g>
+        <circle cx="260" cy="84"  r="9" fill="url(#artNode)"/>
+        <circle cx="404" cy="356" r="7" fill="url(#artNode)"/>
+        <circle cx="116" cy="388" r="7" fill="url(#artNode)"/>
+        <circle cx="260" cy="476" r="5" fill="url(#artNode)"/>
+        <circle cx="188" cy="196" r="5" fill="url(#artNode)"/>
+        <circle cx="332" cy="168" r="5" fill="url(#artNode)"/>
+      </g>
+    </svg>
+  </section>
+
+  <!-- ==================== 右半区：登录 ==================== -->
+  <main class="login-area">
+    <div class="login-main">
+      <div class="login-card">
+
+        <h1 class="welcome">
+          <span data-i18n="welcome">欢迎登录</span>
+          <span class="welcome-brand">ModelEngine</span>
+        </h1>
+        <p class="welcome-sub" data-i18n="welcomeSub">请使用您的账户登录运维管理平台</p>
+
+        <form id="loginForm" novalidate>
+
+          <!-- 用户名 -->
+          <div class="field">
+            <label class="label" for="username" data-i18n="usernameLabel">用户名</label>
+            <div class="input-wrap" id="usernameWrap">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+              <input class="input" id="username" name="username" type="text"
+                     autocomplete="username" autocapitalize="off" spellcheck="false" autofocus
+                     aria-describedby="usernameError"
+                     data-i18n-ph="usernamePh" placeholder="请输入用户名" />
+            </div>
+            <p class="field-error" id="usernameError" data-error-for="username"></p>
+          </div>
+
+          <!-- 密码 -->
+          <div class="field">
+            <label class="label" for="password" data-i18n="passwordLabel">密码</label>
+            <div class="input-wrap" id="passwordWrap">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="4" y="10.5" width="16" height="10" rx="2.4"/>
+                <path d="M8 10.5V7.6a4 4 0 0 1 8 0v2.9"/>
+              </svg>
+              <input class="input" id="password" name="password" type="password"
+                     autocomplete="current-password"
+                     aria-describedby="passwordError"
+                     data-i18n-ph="passwordPh" placeholder="请输入密码" />
+              <button type="button" class="pwd-toggle" id="pwdToggle"
+                      data-i18n-title="showPwd" title="显示密码" aria-label="显示密码">
+                <svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/>
+                  <circle cx="12" cy="12" r="3.2"/>
+                </svg>
+                <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+                  <path d="M4 4.5 20 20.5"/>
+                  <path d="M9.7 5.9A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3.3 4"/>
+                  <path d="M6.3 7.9A16.8 16.8 0 0 0 2.5 12S6 18.5 12 18.5c1.3 0 2.5-.3 3.5-.8"/>
+                  <path d="M10.2 10.4a2.6 2.6 0 0 0 3.5 3.6"/>
+                </svg>
+              </button>
+            </div>
+            <p class="field-error" id="passwordError" data-error-for="password"></p>
+          </div>
+
+          <!-- 验证码：仅在连续登录失败达到策略阈值后出现 -->
+          <div class="field captcha-field" id="captchaField" hidden>
+            <div class="captcha-hint">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.2v.2"/>
+              </svg>
+              <span data-i18n="captchaHint">为保障账户安全，请输入验证码后继续</span>
+            </div>
+            <label class="label" for="captcha" data-i18n="captchaLabel">验证码</label>
+            <div class="captcha-row">
+              <div class="input-wrap" id="captchaWrap">
+                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4.5 6.5h15v11h-15z"/>
+                  <path d="M8 11h2M14 11h2M8 14h3M13 14h3"/>
+                </svg>
+                <input class="input" id="captcha" name="captcha" type="text" maxlength="4"
+                       autocomplete="off" autocapitalize="characters" spellcheck="false"
+                       aria-describedby="captchaError"
+                       data-i18n-ph="captchaPh" placeholder="请输入验证码" />
+              </div>
+              <button type="button" class="captcha-img" id="captchaImg"
+                      data-i18n-title="refreshCaptcha" title="点击刷新验证码"
+                      aria-label="点击刷新验证码"></button>
+              <button type="button" class="captcha-refresh" id="captchaRefresh"
+                      data-i18n-title="refreshCaptcha" title="刷新验证码" aria-label="刷新验证码">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M20 12a8 8 0 1 1-2.6-5.9"/>
+                  <path d="M20 4.5V10h-5.5"/>
+                </svg>
+              </button>
+            </div>
+            <p class="field-error" id="captchaError" data-error-for="captcha"></p>
+          </div>
+
+          <!-- 表单级提示：认证失败统一话术，不暴露账户是否存在 -->
+          <div class="form-message" id="formMessage" hidden role="alert" aria-live="polite"></div>
+
+          <button type="submit" class="submit-btn" id="submitBtn">
+            <span id="submitLabel" data-i18n="submit">登 录</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <footer class="page-footer" data-i18n="footer">© 2026 ModelEngine · 保留所有权利</footer>
+  </main>
+</div>
+
+<!-- ==================== 原型说明浮层（交付时可整段删除） ==================== -->
+<div class="proto" data-prototype>
+  <div class="proto-panel" id="protoPanel" hidden>
+    <h4 data-i18n="protoTitle">原型说明（仅演示用）</h4>
+    <p data-i18n="protoDemo">演示账户：<code>admin / Admin@123</code></p>
+    <p data-i18n="protoTip1">连续 2 次认证失败后自动出现验证码；成功后失败计数归零。</p>
+    <label class="proto-row">
+      <input type="checkbox" id="protoForceCaptcha" />
+      <span data-i18n="protoForce">强制显示验证码</span>
+    </label>
+    <button type="button" class="proto-reset" id="protoReset" data-i18n="protoReset">重置登录失败次数</button>
+  </div>
+  <button type="button" class="proto-toggle" id="protoToggle"
+          data-i18n="protoToggle" aria-expanded="false">原型说明</button>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ===================== 文案字典（中/英） ===================== */
+  var I18N = {
+    'zh-CN': {
+      pageTitle: '登录 · ModelEngine',
+      welcome: '欢迎登录',
+      welcomeSub: '请使用您的账户登录运维管理平台',
+      usernameLabel: '用户名',
+      passwordLabel: '密码',
+      captchaLabel: '验证码',
+      usernamePh: '请输入用户名',
+      passwordPh: '请输入密码',
+      captchaPh: '请输入验证码',
+      showPwd: '显示密码',
+      hidePwd: '隐藏密码',
+      refreshCaptcha: '点击刷新验证码',
+      captchaHint: '为保障账户安全，请输入验证码后继续',
+      submit: '登 录',
+      submitting: '登录中',
+      success: '登录成功，正在进入系统…',
+      errUsername: '请输入用户名',
+      errPassword: '请输入密码',
+      errCaptcha: '请输入验证码',
+      errCredential: '用户名或密码错误，请重试',
+      errCaptchaWrong: '验证码错误，请重新输入',
+      footer: '© 2026 ModelEngine · 保留所有权利',
+      protoToggle: '原型说明',
+      protoTitle: '原型说明（仅演示用）',
+      protoDemo: '演示账户：admin / Admin@123',
+      protoTip1: '连续 2 次认证失败后自动出现验证码；成功后失败计数归零。',
+      protoForce: '强制显示验证码',
+      protoReset: '重置登录失败次数'
+    },
+    'en-US': {
+      pageTitle: 'Sign in · ModelEngine',
+      welcome: 'Welcome to',
+      welcomeSub: 'Sign in with your account to continue',
+      usernameLabel: 'Username',
+      passwordLabel: 'Password',
+      captchaLabel: 'Verification code',
+      usernamePh: 'Enter your username',
+      passwordPh: 'Enter your password',
+      captchaPh: 'Enter the code',
+      showPwd: 'Show password',
+      hidePwd: 'Hide password',
+      refreshCaptcha: 'Click to refresh the code',
+      captchaHint: 'Please enter the verification code to continue',
+      submit: 'Sign In',
+      submitting: 'Signing in',
+      success: 'Signed in. Redirecting…',
+      errUsername: 'Please enter your username',
+      errPassword: 'Please enter your password',
+      errCaptcha: 'Please enter the verification code',
+      errCredential: 'Incorrect username or password. Please try again.',
+      errCaptchaWrong: 'Incorrect verification code. Please try again.',
+      footer: '© 2026 ModelEngine · All rights reserved',
+      protoToggle: 'Prototype notes',
+      protoTitle: 'Prototype notes (demo only)',
+      protoDemo: 'Demo account: admin / Admin@123',
+      protoTip1: 'The code appears after 2 consecutive failures and resets on success.',
+      protoForce: 'Always show the code',
+      protoReset: 'Reset failure count'
+    }
+  };
+
+  /* ===================== 原型参数 =====================
+     生产实现时以下两项均由后端与策略下发：
+     - DEFAULT_LANG：系统默认语言（M11 FR-COM-001）
+     - CAPTCHA_THRESHOLD：连续登录失败阈值（M15 安全策略，FR-SEC-003 / FR-AUTH-005）
+     演示账户仅用于原型演示，实际由 M01/M02 后端校验。
+  ==================================================== */
+  var DEFAULT_LANG = 'zh-CN';
+  var CAPTCHA_THRESHOLD = 2;
+  var DEMO_ACCOUNT = { username: 'admin', password: 'Admin@123' };
+
+  /* ===================== 元素引用 ===================== */
+  var $ = function (id) { return document.getElementById(id); };
+  var form = $('loginForm');
+  var usernameInput = $('username');
+  var passwordInput = $('password');
+  var captchaInput = $('captcha');
+  var captchaField = $('captchaField');
+  var captchaImg = $('captchaImg');
+  var captchaRefresh = $('captchaRefresh');
+  var pwdToggle = $('pwdToggle');
+  var submitBtn = $('submitBtn');
+  var submitLabel = $('submitLabel');
+  var formMessage = $('formMessage');
+  var protoPanel = $('protoPanel');
+  var protoToggle = $('protoToggle');
+
+  /* ===================== 运行时状态 ===================== */
+  var lang = DEFAULT_LANG;
+  var failCount = 0;          // 连续登录失败次数
+  var captchaCode = '';       // 当前验证码答案（实际由后端校验）
+  var fieldErrors = {};       // { username: 'errUsername', ... } 存 key，切语言时重渲染
+  var message = null;         // { key:'errCredential', type:'error' }
+  var submitting = false;
+
+  function t(key) {
+    return (I18N[lang] && I18N[lang][key]) || I18N[DEFAULT_LANG][key] || key;
+  }
+
+  /* ===================== 语言切换 ===================== */
+  function setLang(next) {
+    lang = I18N[next] ? next : DEFAULT_LANG;
+    document.documentElement.lang = lang;
+    document.documentElement.setAttribute('data-lang', lang);
+    document.title = t('pageTitle');
+
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+      el.textContent = t(el.getAttribute('data-i18n'));
+    });
+    document.querySelectorAll('[data-i18n-ph]').forEach(function (el) {
+      el.setAttribute('placeholder', t(el.getAttribute('data-i18n-ph')));
+    });
+    document.querySelectorAll('[data-i18n-title]').forEach(function (el) {
+      var text = t(el.getAttribute('data-i18n-title'));
+      el.setAttribute('title', text);
+      if (el.hasAttribute('aria-label')) el.setAttribute('aria-label', text);
+    });
+
+    // 密码可见性按钮的当前语义
+    if (pwdToggle) {
+      var visible = passwordInput.type === 'text';
+      var pwdKey = visible ? 'hidePwd' : 'showPwd';
+      pwdToggle.setAttribute('title', t(pwdKey));
+      pwdToggle.setAttribute('aria-label', t(pwdKey));
+    }
+
+    document.querySelectorAll('.lang-btn').forEach(function (btn) {
+      btn.classList.toggle('is-active', btn.getAttribute('data-lang') === lang);
+    });
+
+    renderErrors();
+    try { localStorage.setItem('oms.lang', lang); } catch (e) { /* 忽略隐私模式限制 */ }
+  }
+
+  document.querySelectorAll('.lang-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () { setLang(btn.getAttribute('data-lang')); });
+  });
+
+  /* ===================== 校验与提示渲染 ===================== */
+  var ERROR_FOR = { username: 'usernameError', password: 'passwordError', captcha: 'captchaError' };
+  var WRAP_FOR = { username: 'usernameWrap', password: 'passwordWrap', captcha: 'captchaWrap' };
+
+  function renderErrors() {
+    Object.keys(ERROR_FOR).forEach(function (name) {
+      var key = fieldErrors[name];
+      var el = $(ERROR_FOR[name]);
+      var wrap = $(WRAP_FOR[name]);
+      if (key) {
+        el.textContent = t(key);
+        el.classList.add('is-visible');
+        wrap.classList.add('has-error');
+      } else {
+        el.textContent = '';
+        el.classList.remove('is-visible');
+        wrap.classList.remove('has-error');
+      }
+    });
+
+    if (message) {
+      formMessage.hidden = false;
+      formMessage.className = 'form-message ' + (message.type === 'success' ? 'is-success' : 'is-error');
+      formMessage.innerHTML = message.type === 'success'
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.4l2.6 2.6L16 9.6"/></svg><span></span>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.8v5"/><path d="M12 16.2v.2"/></svg><span></span>';
+      formMessage.querySelector('span').textContent = t(message.key);
+    } else {
+      formMessage.hidden = true;
+      formMessage.className = 'form-message';
+      formMessage.innerHTML = '';
+    }
+  }
+
+  function clearError(name) {
+    if (fieldErrors[name]) { delete fieldErrors[name]; renderErrors(); }
+  }
+  usernameInput.addEventListener('input', function () { clearError('username'); });
+  passwordInput.addEventListener('input', function () { clearError('password'); });
+  captchaInput.addEventListener('input', function () {
+    clearError('captcha');
+    // 直接输入小写时按大写呈现，减少大小写误判
+    var pos = captchaInput.selectionStart;
+    captchaInput.value = captchaInput.value.toUpperCase();
+    try { captchaInput.setSelectionRange(pos, pos); } catch (e) {}
+  });
+
+  /* ===================== 验证码 ===================== */
+  function newCaptcha() {
+    var chars = 'ABCDEFGHJKLMNPQRSTUVWXY3456789';
+    var code = '';
+    for (var i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+    captchaCode = code;
+
+    var w = 108, h = 44, parts = [];
+    parts.push('<rect width="' + w + '" height="' + h + '" rx="10" fill="#F1F5FB"/>');
+    for (var l = 0; l < 3; l++) {
+      var x1 = Math.random() * w, y1 = Math.random() * h, x2 = Math.random() * w, y2 = Math.random() * h;
+      parts.push('<path d="M' + x1.toFixed(1) + ' ' + y1.toFixed(1) + ' Q' +
+        ((x1 + x2) / 2).toFixed(1) + ' ' + (Math.random() * h).toFixed(1) + ' ' +
+        x2.toFixed(1) + ' ' + y2.toFixed(1) + '" stroke="rgba(22,104,220,' +
+        (0.10 + Math.random() * 0.16).toFixed(2) + ')" stroke-width="1.2" fill="none"/>');
+    }
+    for (var d = 0; d < 20; d++) {
+      parts.push('<circle cx="' + (Math.random() * w).toFixed(1) + '" cy="' +
+        (Math.random() * h).toFixed(1) + '" r="' + (0.6 + Math.random() * 0.9).toFixed(1) +
+        '" fill="rgba(22,104,220,' + (0.10 + Math.random() * 0.2).toFixed(2) + ')"/>');
+    }
+    var palette = ['#1668DC', '#0F55BC', '#2E7CF6', '#1B4EA8'];
+    code.split('').forEach(function (ch, i) {
+      var x = 14 + i * 24 + Math.random() * 3;
+      var y = 30 + Math.random() * 3;
+      var rot = (Math.random() * 30 - 15).toFixed(1);
+      var size = (20 + Math.random() * 3).toFixed(1);
+      parts.push('<text x="' + x.toFixed(1) + '" y="' + y.toFixed(1) +
+        '" font-family="Menlo,Consolas,monospace" font-size="' + size +
+        '" font-weight="700" fill="' + palette[i % palette.length] +
+        '" transform="rotate(' + rot + ' ' + x.toFixed(1) + ' ' + y.toFixed(1) + ')">' + ch + '</text>');
+    });
+
+    captchaImg.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + w + ' ' + h +
+      '" preserveAspectRatio="none">' + parts.join('') + '</svg>';
+    captchaInput.value = '';
+  }
+
+  function refreshCaptcha(animate) {
+    newCaptcha();
+    if (animate) {
+      captchaRefresh.classList.remove('is-spinning');
+      void captchaRefresh.offsetWidth;
+      captchaRefresh.classList.add('is-spinning');
+    }
+  }
+  captchaImg.addEventListener('click', function () { refreshCaptcha(false); });
+  captchaRefresh.addEventListener('click', function () { refreshCaptcha(true); });
+
+  /* ===================== 验证码字段显隐 ===================== */
+  function syncCaptchaVisibility() {
+    var show = failCount >= CAPTCHA_THRESHOLD || $('protoForceCaptcha').checked;
+    if (show && captchaField.hidden) {
+      captchaField.hidden = false;
+      refreshCaptcha(false);
+    } else if (!show && !captchaField.hidden) {
+      captchaField.hidden = true;
+      captchaInput.value = '';
+      clearError('captcha');
+    }
+  }
+
+  /* ===================== 密码可见性 ===================== */
+  pwdToggle.addEventListener('click', function () {
+    var toText = passwordInput.type === 'password';
+    passwordInput.type = toText ? 'text' : 'password';
+    pwdToggle.querySelector('.eye-open').hidden = toText;
+    pwdToggle.querySelector('.eye-off').hidden = !toText;
+    var key = toText ? 'hidePwd' : 'showPwd';
+    pwdToggle.setAttribute('title', t(key));
+    pwdToggle.setAttribute('aria-label', t(key));
+    passwordInput.focus();
+  });
+
+  /* ===================== 提交 ===================== */
+  function setSubmitting(on) {
+    submitting = on;
+    submitBtn.disabled = on;
+    submitLabel.textContent = on ? t('submitting') : t('submit');
+    var old = submitBtn.querySelector('.spinner');
+    if (on && !old) {
+      var sp = document.createElement('span');
+      sp.className = 'spinner';
+      submitBtn.insertBefore(sp, submitLabel);
+    } else if (!on && old) {
+      old.remove();
+    }
+  }
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    if (submitting) return;
+
+    message = null;
+    fieldErrors = {};
+
+    // 1) 必填校验
+    if (!usernameInput.value.trim()) fieldErrors.username = 'errUsername';
+    if (!passwordInput.value) fieldErrors.password = 'errPassword';
+    var captchaVisible = !captchaField.hidden;
+    if (captchaVisible && !captchaInput.value.trim()) fieldErrors.captcha = 'errCaptcha';
+    if (Object.keys(fieldErrors).length) {
+      renderErrors();
+      focusFirstError();
+      return;
+    }
+
+    // 2) 验证码校验（先验证码、后密码，符合 FR-AUTH-005 主流程）
+    if (captchaVisible && captchaInput.value.trim().toUpperCase() !== captchaCode) {
+      failCount++;
+      message = { key: 'errCaptchaWrong', type: 'error' };
+      refreshCaptcha(true);
+      syncCaptchaVisibility();
+      renderErrors();
+      focusFirstError();
+      return;
+    }
+
+    // 3) 账户与密码认证（实际由后端按 M01 账户状态、M15 密码策略判定）
+    setSubmitting(true);
+    window.setTimeout(function () {
+      var ok = usernameInput.value.trim() === DEMO_ACCOUNT.username &&
+               passwordInput.value === DEMO_ACCOUNT.password;
+
+      if (ok) {
+        // 登录成功：解除验证码强制要求并重置失败计数
+        failCount = 0;
+        $('protoForceCaptcha').checked = false;
+        captchaField.hidden = true;
+        message = { key: 'success', type: 'success' };
+        renderErrors();
+        // 实际实现：跳转至该用户可访问的功能首页
+        window.setTimeout(function () {
+          setSubmitting(false);
+          renderErrors();
+        }, 1500);
+      } else {
+        failCount++;
+        // 统一话术，不暴露账户是否存在 / 是否被禁用
+        message = { key: 'errCredential', type: 'error' };
+        setSubmitting(false);
+        syncCaptchaVisibility();
+        // 验证码已生效时，任何一次失败都换一张，避免旧验证码被复用
+        if (!captchaField.hidden) refreshCaptcha(true);
+        renderErrors();
+      }
+    }, 480);
+  });
+
+  function focusFirstError() {
+    var order = ['username', 'password', 'captcha'];
+    for (var i = 0; i < order.length; i++) {
+      if (fieldErrors[order[i]]) {
+        ({ username: usernameInput, password: passwordInput, captcha: captchaInput })[order[i]].focus();
+        return;
+      }
+    }
+  }
+
+  /* ===================== 原型说明浮层 ===================== */
+  protoToggle.addEventListener('click', function () {
+    protoPanel.hidden = !protoPanel.hidden;
+    protoToggle.setAttribute('aria-expanded', String(!protoPanel.hidden));
+  });
+  $('protoForceCaptcha').addEventListener('change', function () {
+    if (!this.checked) { failCount = 0; message = null; }
+    syncCaptchaVisibility();
+    renderErrors();
+  });
+  $('protoReset').addEventListener('click', function () {
+    failCount = 0;
+    $('protoForceCaptcha').checked = false;
+    captchaInput.value = '';
+    clearError('captcha');
+    message = null;
+    syncCaptchaVisibility();
+    renderErrors();
+  });
+
+  /* ===================== 初始化 ===================== */
+  var saved = null;
+  try { saved = localStorage.getItem('oms.lang'); } catch (e) {}
+  setLang(saved || DEFAULT_LANG);
+  renderErrors();
+})();
+</script>
+</body>
+</html>
