@@ -63,7 +63,10 @@
   html,body{ height:100%; }
   body{
     margin:0;
-    font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB","Helvetica Neue",Arial,"Noto Sans SC",sans-serif;
+    /* 依次覆盖 macOS(PingFang) / Windows(雅黑) / Linux(Noto Sans CJK、思源、文泉驿)，
+       避免在未安装中文字体的系统上回退成豆腐块 */
+    font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB","Helvetica Neue",Arial,
+                "Noto Sans CJK SC","Source Han Sans SC","Noto Sans SC","WenQuanYi Micro Hei",sans-serif;
     color:var(--text-1);
     background:#FBFCFE;
     -webkit-font-smoothing:antialiased;
@@ -358,6 +361,11 @@
     background:var(--success-bg);
     color:var(--success);
   }
+  .form-message.is-info{
+    border-color:#CFE0FB;
+    background:var(--brand-soft);
+    color:var(--brand-700);
+  }
 
   /* ---------- 提交按钮 ---------- */
   .submit-btn{
@@ -397,6 +405,21 @@
     font-size:12px;
     color:var(--text-3);
   }
+
+  /* ===================== 首次登录：强制修改密码步骤（FR-AUTH-006） ===================== */
+  .step-badge{
+    display:inline-flex; align-items:center; gap:6px;
+    height:23px; padding:0 10px; margin-bottom:12px;
+    border-radius:999px; background:var(--brand-soft); color:var(--brand-700);
+    font-size:11.5px; line-height:1;
+  }
+  .step-badge::before{ content:""; width:5px; height:5px; border-radius:50%; background:var(--brand-500); }
+  .step-note{
+    margin:0 0 20px; padding:10px 12px;
+    border-radius:var(--radius-sm); background:#F5F8FE;
+    color:#4A5A76; font-size:12.5px; line-height:1.65;
+  }
+  .f-hint-lite{ margin:7px 0 0; font-size:12px; color:var(--text-3); line-height:1.6; }
 
   /* ===================== 原型说明浮层（仅原型使用） ===================== */
   .proto{ position:fixed; right:18px; bottom:18px; z-index:50; font-size:12.5px; }
@@ -536,7 +559,7 @@
           <span data-i18n="welcome">欢迎登录</span>
           <span class="welcome-brand">ModelEngine</span>
         </h1>
-        <p class="welcome-sub" data-i18n="welcomeSub">请使用您的账户登录运维管理平台</p>
+        <p class="welcome-sub" id="welcomeSub" data-i18n="welcomeSub">请使用您的账户登录运维管理平台</p>
 
         <form id="loginForm" novalidate>
 
@@ -633,6 +656,47 @@
             <span id="submitLabel" data-i18n="submit">登 录</span>
           </button>
         </form>
+
+        <!-- 首次登录第二步：强制修改密码（FR-AUTH-006），完成后才进入协议确认 -->
+        <form id="pwdForm" novalidate hidden>
+          <div class="step-badge" data-i18n="pwdStepBadge">首次登录</div>
+          <p class="step-note" data-i18n="pwdStepNote">初始密码已失效。请设置新密码，设置完成后还需确认用户协议，完成后即可使用系统。</p>
+
+          <div class="field">
+            <label class="label" for="newPwd" data-i18n="newPwdLabel">新密码</label>
+            <div class="input-wrap" id="newPwdWrap">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="4" y="10.5" width="16" height="10" rx="2.4"/>
+                <path d="M8 10.5V7.6a4 4 0 0 1 8 0v2.9"/>
+              </svg>
+              <input class="input" id="newPwd" type="password" autocomplete="new-password"
+                     data-i18n-ph="newPwdPh" placeholder="请输入新密码" />
+            </div>
+            <p class="f-hint-lite" data-i18n="pwdPolicyHint">密码需至少 8 位，且包含大小写字母、数字、特殊字符中的至少三类</p>
+            <p class="field-error" id="newPwdError"></p>
+          </div>
+
+          <div class="field">
+            <label class="label" for="newPwd2" data-i18n="newPwd2Label">确认密码</label>
+            <div class="input-wrap" id="newPwd2Wrap">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="4" y="10.5" width="16" height="10" rx="2.4"/>
+                <path d="M8 10.5V7.6a4 4 0 0 1 8 0v2.9"/>
+              </svg>
+              <input class="input" id="newPwd2" type="password" autocomplete="new-password"
+                     data-i18n-ph="newPwd2Ph" placeholder="请再次输入新密码" />
+            </div>
+            <p class="field-error" id="newPwd2Error"></p>
+          </div>
+
+          <div class="form-message" id="pwdMessage" hidden role="alert" aria-live="polite"></div>
+
+          <button type="submit" class="submit-btn" id="pwdSubmitBtn">
+            <span id="pwdSubmitLabel" data-i18n="pwdSubmit">确 定</span>
+          </button>
+        </form>
       </div>
     </div>
 
@@ -644,12 +708,17 @@
 <div class="proto" data-prototype>
   <div class="proto-panel" id="protoPanel" hidden>
     <h4 data-i18n="protoTitle">原型说明（仅演示用）</h4>
-    <p data-i18n="protoDemo">演示账户：<code>admin / Admin@123</code></p>
+    <p><span data-i18n="protoDemo">演示账户：</span><code>admin / Admin@123</code></p>
     <p data-i18n="protoTip1">连续 2 次认证失败后自动出现验证码；成功后失败计数归零。</p>
     <label class="proto-row">
       <input type="checkbox" id="protoForceCaptcha" />
       <span data-i18n="protoForce">强制显示验证码</span>
     </label>
+    <label class="proto-row">
+      <input type="checkbox" id="protoFirstLogin" checked />
+      <span data-i18n="protoFirstLogin">本次为首次登录（弹用户协议）</span>
+    </label>
+    <p class="proto-note" data-i18n="protoTip2">取消协议确认将强制登出（FR-AUTH-008）。</p>
     <button type="button" class="proto-reset" id="protoReset" data-i18n="protoReset">重置登录失败次数</button>
   </div>
   <button type="button" class="proto-toggle" id="protoToggle"
@@ -687,10 +756,30 @@
       footer: '© 2026 ModelEngine · 保留所有权利',
       protoToggle: '原型说明',
       protoTitle: '原型说明（仅演示用）',
-      protoDemo: '演示账户：admin / Admin@123',
+      protoDemo: '演示账户：',
       protoTip1: '连续 2 次认证失败后自动出现验证码；成功后失败计数归零。',
       protoForce: '强制显示验证码',
-      protoReset: '重置登录失败次数'
+      protoReset: '重置登录失败次数',
+      protoFirstLogin: '本次为首次登录（先改密，再用新密码重新登录）',
+      protoTip2: '改密完成后需用新密码重新登录；用户协议在进入主界面后弹出（FR-AUTH-006 / FR-AUTH-008）。',
+
+      /* ---- 首次登录：强制修改密码（FR-AUTH-006） ---- */
+      pwdStepBadge: '首次登录',
+      pwdStepSub: '首次登录，请先设置新密码',
+      pwdStepNote: '初始密码已失效。请设置新密码，设置完成后还需确认用户协议，完成后即可使用系统。',
+      newPwdLabel: '新密码',
+      newPwd2Label: '确认密码',
+      newPwdPh: '请输入新密码',
+      newPwd2Ph: '请再次输入新密码',
+      pwdPolicyHint: '密码需至少 8 位，且包含大小写字母、数字、特殊字符中的至少三类',
+      pwdSubmit: '确 定',
+      pwdChanged: '密码修改成功，请使用新密码重新登录',
+      errNewPwdRequired: '请输入新密码',
+      errNewPwd2Required: '请再次输入新密码',
+      errPwdPolicy: '密码不满足复杂度要求：至少 8 位，且包含大小写字母、数字、特殊字符中的至少三类',
+      errPwdMismatch: '两次输入的密码不一致',
+      reloginRequired: '密码已更新，请使用新密码重新登录',
+
     },
     'en-US': {
       pageTitle: 'Sign in · ModelEngine',
@@ -717,10 +806,30 @@
       footer: '© 2026 ModelEngine · All rights reserved',
       protoToggle: 'Prototype notes',
       protoTitle: 'Prototype notes (demo only)',
-      protoDemo: 'Demo account: admin / Admin@123',
-      protoTip1: 'The code appears after 2 consecutive failures and resets on success.',
-      protoForce: 'Always show the code',
-      protoReset: 'Reset failure count'
+      protoDemo: 'Demo account: ',
+      protoTip1: 'A CAPTCHA appears automatically after 2 failed sign-ins; the failure counter resets after a success.',
+      protoForce: 'Always show the CAPTCHA',
+      protoReset: 'Reset failed sign-in count',
+      protoFirstLogin: 'Simulate first sign-in (change password, then sign in again)',
+      protoTip2: 'After the change you must sign in again; the user agreement appears in the main UI (FR-AUTH-006 / FR-AUTH-008).',
+
+      /* ---- First sign-in: forced password change (FR-AUTH-006) ---- */
+      pwdStepBadge: 'First sign-in',
+      pwdStepSub: 'First sign-in — please set a new password',
+      pwdStepNote: 'Your initial password is no longer valid. Set a new password, then accept the user agreement to continue.',
+      newPwdLabel: 'New password',
+      newPwd2Label: 'Confirm password',
+      newPwdPh: 'Enter the new password',
+      newPwd2Ph: 'Enter the new password again',
+      pwdPolicyHint: 'At least 8 characters, with 3 of: upper case, lower case, digit, symbol',
+      pwdSubmit: 'Confirm',
+      pwdChanged: 'Password changed. Please sign in again with the new password.',
+      errNewPwdRequired: 'Please enter the new password',
+      errNewPwd2Required: 'Please enter the new password again',
+      errPwdPolicy: 'Password too weak: 8+ characters with at least 3 of upper case, lower case, digit, symbol',
+      errPwdMismatch: 'The two passwords do not match',
+      reloginRequired: 'Password updated — please sign in with the new password.',
+
     }
   };
 
@@ -733,6 +842,9 @@
   var DEFAULT_LANG = 'zh-CN';
   var CAPTCHA_THRESHOLD = 2;
   var DEMO_ACCOUNT = { username: 'admin', password: 'Admin@123' };
+  /* 原型内模拟口令变更：首次登录改密后，必须用新口令才能再次登录（FR-AUTH-006） */
+  var demoPassword = DEMO_ACCOUNT.password;
+  var pwdChangedDone = false;
 
   /* ===================== 元素引用 ===================== */
   var $ = function (id) { return document.getElementById(id); };
@@ -760,6 +872,12 @@
 
   function t(key) {
     return (I18N[lang] && I18N[lang][key]) || I18N[DEFAULT_LANG][key] || key;
+  }
+  /* 带占位符的文案：tf('someKey', { n: 5 }) */
+  function tf(key, vars) {
+    return t(key).replace(/\{(\w+)\}/g, function (m, k) {
+      return vars[k] != null ? vars[k] : m;
+    });
   }
 
   /* ===================== 语言切换 ===================== */
@@ -794,6 +912,10 @@
     });
 
     renderErrors();
+    if (pwdStepOn) {                                  // 改密步骤的标题随语言切换
+      $('welcomeSub').textContent = t('pwdStepSub');
+      renderPwdErrors();
+    }
     try { localStorage.setItem('oms.lang', lang); } catch (e) { /* 忽略隐私模式限制 */ }
   }
 
@@ -823,10 +945,17 @@
 
     if (message) {
       formMessage.hidden = false;
-      formMessage.className = 'form-message ' + (message.type === 'success' ? 'is-success' : 'is-error');
-      formMessage.innerHTML = message.type === 'success'
-        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.4l2.6 2.6L16 9.6"/></svg><span></span>'
-        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.8v5"/><path d="M12 16.2v.2"/></svg><span></span>';
+      var cls = message.type === 'success' ? 'is-success'
+              : (message.type === 'info' ? 'is-info' : 'is-error');
+      var ic = message.type === 'success'
+        ? '<circle cx="12" cy="12" r="9"/><path d="M8 12.4l2.6 2.6L16 9.6"/>'
+        : (message.type === 'info'
+            ? '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.4"/><path d="M12 7.8h.01"/>'
+            : '<circle cx="12" cy="12" r="9"/><path d="M12 7.8v5"/><path d="M12 16.2v.2"/>');
+      formMessage.className = 'form-message ' + cls;
+      formMessage.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ic +
+        '</svg><span></span>';
       formMessage.querySelector('span').textContent = t(message.key);
     } else {
       formMessage.hidden = true;
@@ -970,7 +1099,7 @@
     setSubmitting(true);
     window.setTimeout(function () {
       var ok = usernameInput.value.trim() === DEMO_ACCOUNT.username &&
-               passwordInput.value === DEMO_ACCOUNT.password;
+               passwordInput.value === demoPassword;
 
       if (ok) {
         // 登录成功：解除验证码强制要求并重置失败计数
@@ -979,11 +1108,15 @@
         captchaField.hidden = true;
         message = { key: 'success', type: 'success' };
         renderErrors();
-        // 实际实现：跳转至该用户可访问的功能首页
         window.setTimeout(function () {
           setSubmitting(false);
           renderErrors();
-        }, 1500);
+          if ($('protoFirstLogin').checked && !pwdChangedDone) {
+            showPwdStep();       // 首次登录第一步：强制修改密码（FR-AUTH-006）
+          } else {
+            enterSystem();       // 已完成改密并以新口令登录 → 进入系统（协议在主界面确认）
+          }
+        }, 900);
       } else {
         failCount++;
         // 统一话术，不暴露账户是否存在 / 是否被禁用
@@ -1006,6 +1139,128 @@
       }
     }
   }
+
+  /* ===================== 首次登录第二步：强制修改密码（FR-AUTH-006） ===================== */
+  var pwdStepOn = false;        // 是否处于「请设置新密码」步骤
+  var pwdSubmitting = false;
+  var pwdErrors = {};
+  var pwdMsg = null;
+
+  function passwordOk(p) {
+    if (p.length < 8) return false;
+    var n = 0;
+    if (/[A-Z]/.test(p)) n++;
+    if (/[a-z]/.test(p)) n++;
+    if (/[0-9]/.test(p)) n++;
+    if (/[^A-Za-z0-9]/.test(p)) n++;
+    return n >= 3;
+  }
+
+  var PWD_FIELDS = { newPwd: 'newPwdError', newPwd2: 'newPwd2Error' };
+  var PWD_WRAPS = { newPwd: 'newPwdWrap', newPwd2: 'newPwd2Wrap' };
+
+  function renderPwdErrors() {
+    Object.keys(PWD_FIELDS).forEach(function (k) {
+      var key = pwdErrors[k];
+      var el = $(PWD_FIELDS[k]), wrap = $(PWD_WRAPS[k]);
+      if (key) {
+        el.textContent = t(key); el.classList.add('is-visible'); wrap.classList.add('has-error');
+      } else {
+        el.textContent = ''; el.classList.remove('is-visible'); wrap.classList.remove('has-error');
+      }
+    });
+    var msg = $('pwdMessage');
+    if (pwdMsg) {
+      msg.hidden = false;
+      msg.className = 'form-message ' + (pwdMsg.type === 'success' ? 'is-success' : 'is-error');
+      msg.innerHTML = pwdMsg.type === 'success'
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.4l2.6 2.6L16 9.6"/></svg><span></span>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.8v5"/><path d="M12 16.2v.2"/></svg><span></span>';
+      msg.querySelector('span').textContent = t(pwdMsg.key);
+    } else {
+      msg.hidden = true; msg.className = 'form-message'; msg.innerHTML = '';
+    }
+  }
+
+  /* 进入系统：若用户协议尚未确认，交由主界面在首页弹出协议窗口（FR-AUTH-008） */
+  function enterSystem() {
+    try {
+      if (sessionStorage.getItem('oms.agreementConfirmed') !== '1') {
+        sessionStorage.setItem('oms.pendingAgreement', '1');
+      }
+    } catch (e) { /* 忽略隐私模式限制 */ }
+    window.location.href = 'app-shell.html';
+  }
+
+  /* 改密成功后回到登录表单：清空密码并要求用新密码重新登录 */
+  function backToLoginWithNewPwd() {
+    pwdStepOn = false;
+    form.hidden = false;
+    $('pwdForm').hidden = true;
+    $('welcomeSub').textContent = t('welcomeSub');
+    $('pwdForm').reset();
+    pwdErrors = {}; pwdMsg = null; renderPwdErrors();
+    passwordInput.value = '';
+    passwordInput.type = 'password';
+    pwdToggle.querySelector('.eye-open').hidden = false;
+    pwdToggle.querySelector('.eye-off').hidden = true;
+    failCount = 0;
+    captchaField.hidden = true;
+    captchaInput.value = '';
+    fieldErrors = {};
+    message = { key: 'reloginRequired', type: 'info' };
+    renderErrors();
+    passwordInput.focus();
+  }
+
+  function showPwdStep() {
+    pwdStepOn = true;
+    form.hidden = true;
+    $('pwdForm').hidden = false;
+    $('welcomeSub').textContent = t('pwdStepSub');
+    pwdErrors = {}; pwdMsg = null;
+    renderPwdErrors();
+    $('newPwd').focus();
+  }
+
+  ['newPwd', 'newPwd2'].forEach(function (id) {
+    $(id).addEventListener('input', function () {
+      if (!pwdErrors[id]) return;
+      delete pwdErrors[id]; renderPwdErrors();
+    });
+  });
+
+  $('pwdForm').addEventListener('submit', function (event) {
+    event.preventDefault();
+    if (pwdSubmitting) return;
+    pwdMsg = null;
+    pwdErrors = {};
+    var p1 = $('newPwd').value, p2 = $('newPwd2').value;
+    if (!p1) pwdErrors.newPwd = 'errNewPwdRequired';
+    else if (!passwordOk(p1)) pwdErrors.newPwd = 'errPwdPolicy';
+    if (!p2) pwdErrors.newPwd2 = 'errNewPwd2Required';
+    else if (p2 !== p1) pwdErrors.newPwd2 = 'errPwdMismatch';
+    if (Object.keys(pwdErrors).length) {
+      renderPwdErrors();
+      $(pwdErrors.newPwd ? 'newPwd' : 'newPwd2').focus();
+      return;
+    }
+
+    // 实际实现：此处提交改密，成功后初始凭据失效、该账户此前的会话全部失效（FR-AUTH-006）
+    pwdSubmitting = true;
+    var btn = $('pwdSubmitBtn');
+    btn.disabled = true;
+    window.setTimeout(function () {
+      pwdSubmitting = false;
+      btn.disabled = false;
+      demoPassword = p1;                       // 初始凭据立即失效，新口令生效
+      pwdChangedDone = true;
+      pwdMsg = { key: 'pwdChanged', type: 'success' };
+      renderPwdErrors();
+      // FR-AUTH-006 主流程第 7 步：提示修改成功并要求用户使用新密码重新登录
+      window.setTimeout(backToLoginWithNewPwd, 1500);
+    }, 600);
+  });
 
   /* ===================== 原型说明浮层 ===================== */
   protoToggle.addEventListener('click', function () {
