@@ -740,6 +740,12 @@
   }
   .group-desc{ color:var(--text-2); }
   .remark-text.cell-desc{ max-width:320px; }   /* 用途说明列放宽，避免过早截断 */
+  /* 第三方接入页：SNMP 引擎ID 列（长十六进制串，超长省略） */
+  .remark-text.cell-engine{ max-width:196px; font-family:Menlo,Consolas,"Courier New",monospace;
+                            font-size:12px; }
+  /* 抽屉里的测试结果行（SFTP 连通性测试） */
+  .f-hint.is-ok-msg{ color:#15803D; }
+  .f-hint.is-bad-msg{ color:var(--danger); }
 
   /* ===================== 告警统计（M17） ===================== */
   .rank-list{ padding:4px 0; }
@@ -1310,6 +1316,7 @@
   <div class="drawer-body" id="drawerBody"></div>
   <div class="drawer-foot">
     <span class="foot-note" id="drawerNote"></span>
+    <button type="button" class="btn" id="drawerExtra" hidden></button>
     <button type="button" class="btn" id="drawerCancel">取消</button>
     <button type="button" class="btn btn-primary" id="drawerSubmit"></button>
   </div>
@@ -1812,6 +1819,147 @@
       bakSave: '保存',
       toastBakSaved: '备份配置已保存（原型演示）',
       toastBakNow: '已发起一次全量备份，交由任务中心排队执行（原型演示）',
+
+      /* ---- 第三方接入（M14 第三方接入） ---- */
+      intTitle: '第三方接入',
+      intSub: 'OMS 与外部基础设施的统一接入通道：SNMP 告警上报、SFTP 文件传输与 CA 证书签发（M14）',
+      intColIp: 'IP地址',
+      intColPort: '端口',
+      intColUser: '用户名',
+      intColPath: '路径',
+      intColPwd: '密码',
+      intIpPh: '请输入 IPv4 或 IPv6 地址',
+      intIpHint: '支持 IPv4 与 IPv6；原型中 192.0.2.1 / 198.51.100.1 / 2001:db8::1 模拟不可达',
+      pwdKeepPh: '不修改请留空',
+      errIpFormat: '地址格式不正确，请填写合法的 IPv4 或 IPv6 地址',
+      errIpv4Only: '仅支持 IPv4 地址',
+      errSnmpPort: '端口需为 1-65535 的整数',
+      errUnreachable: '目标地址不可达（原型模拟）',
+      langZh: '中文',
+      langEn: '英语',
+      /* SNMP 接入 */
+      snmpCard: 'SNMP 接入配置',
+      snmpCreate: '创建SNMP接入',
+      snmpCreateTitle: '创建SNMP接入',
+      snmpEditTitle: '修改SNMP接入',
+      snmpEditSub: 'SNMP Trap 上报通道：协议版本、连通性校验与上报目标（FR-3RD-001）',
+      snmpNote: '上报方式固定为 SNMP Trap；每条通道独立生效，停用后不再对外发送上报（FR-3RD-001）',
+      snmpColName: '名称',
+      snmpNamePh: '请输入SNMP接入名称',
+      snmpVersion: 'SNMP版本',
+      snmpVerV3: 'SNMPv3',
+      snmpVerV2c: 'SNMPv2c',
+      snmpVersionHint: 'SNMPv3 需要认证与加密配置；SNMPv2c 不需要',
+      snmpVerify: '是否进行连通性校验',
+      snmpVerifyHint: '开启后，保存时对上报目标做一次连通性校验；校验不通过则不允许启用（保存后置为停用）',
+      snmpPortHint: '默认 162，范围 1-65535',
+      snmpUser: '安全用户名',
+      snmpUserPh: '请输入安全用户名',
+      snmpAuthAlg: '鉴权算法',
+      snmpPrivAlg: '加密算法',
+      snmpPwdCheck: '是否校验鉴权密码和数据加密密码的复杂度',
+      snmpPwdCheckHint: '开启后按安全策略的密码复杂度校验：至少 8 位，且包含大小写字母、数字、特殊字符中的至少三类',
+      snmpAuthPwd: '鉴权密码',
+      snmpAuthPwdPh: '请输入鉴权密码',
+      snmpAuthPwd2: '确认鉴权密码',
+      snmpPrivPwd: '数据加密密码',
+      snmpPrivPwdPh: '请输入数据加密密码',
+      snmpPrivPwd2: '确认数据加密密码',
+      snmpV2cHint: 'SNMPv2c 不需要认证与加密配置：安全用户名、鉴权算法、鉴权密码、加密算法与数据加密密码均不适用',
+      snmpLang: '语言',
+      snmpReportType: '上报数据类型',
+      snmpReportAlarm: '告警',
+      snmpReportHint: '当前仅支持上报「告警」；可不勾选（不勾选表示该通道暂不上报任何数据）',
+      snmpEngineId: '引擎ID',
+      snmpEngineIdHint: '引擎ID 由系统在创建通道时生成，用于 SNMP 上报标识，创建后不可修改',
+      snmpDescPh: '请输入该通道的用途说明',
+      snmpFoot: '共 {n} 个 SNMP 接入',
+      snmpFootHint: '上报方式固定为 SNMP Trap，不使用 Inform；协议版本与认证信息按通道独立生效（FR-3RD-001）',
+      snmpEmpty: '暂无 SNMP 接入，点击右侧「创建SNMP接入」新建通道',
+      snmpDeleteTitle: '删除 SNMP 接入',
+      snmpDeleteBody: '确认删除 SNMP 接入「{name}」？',
+      snmpDeleteHint: '删除后该通道不再上报告警；历史操作记录仍保留在操作日志中（FR-3RD-001）',
+      toastSnmpCreated: 'SNMP 接入已创建，引擎ID 已生成（原型演示）',
+      toastSnmpSaved: 'SNMP 接入已保存（原型演示）',
+      toastSnmpDeleted: 'SNMP 接入「{name}」已删除（原型演示）',
+      toastSnmpOn: 'SNMP 接入「{name}」已启用（原型演示）',
+      toastSnmpOff: 'SNMP 接入「{name}」已停用（原型演示）',
+      toastSnmpUnreachable: '连通性校验未通过：通道已保存并置为停用（原型演示）',
+      /* SFTP 接入 */
+      sftpCard: 'SFTP 配置',
+      sftpCreate: '配置SFTP接入',
+      sftpCreateTitle: '配置SFTP接入',
+      sftpEditTitle: '修改SFTP接入',
+      sftpEditSub: 'OMS 全局唯一的 SFTP 文件服务器连接：服务器信息与访问凭据（FR-3RD-002）',
+      sftpFormNote: 'OMS 全局只允许一个 SFTP 连接：保存后备份恢复的「远程备份」等场景统一复用它（FR-3RD-002）',
+      sftpFormHint: '连接信息或凭据变更后需重新测试连通性，测试通过后才允许保存；凭据加密保存、不回显（FR-3RD-002）',
+      sftpNotConfigured: '尚未接入 SFTP 文件服务器（OMS 全局最多接入一个）',
+      sftpEmptyNote: 'OMS 全局只允许一个 SFTP 连接，备份文件投递等场景统一复用它（FR-3RD-002）',
+      sftpNote: '凭据加密保存且不回显；连接正被引用时需先停用再删除（FR-3RD-002）',
+      sftpRef: '引用方',
+      sftpRefBackup: '备份恢复 · 远程备份',
+      sftpRefActive: '使用中',
+      sftpRefInactive: '未使用',
+      sftpTestedAt: '最近一次测试',
+      sftpPortHint: '默认 22，范围 1-65535',
+      sftpUserPh: '请输入用户名',
+      sftpPwdPh: '请输入密码',
+      sftpPwdHint: '凭据加密保存，修改时不回显明文；不修改请留空',
+      sftpPathPh: '请输入文件存放路径',
+      sftpPathHint: '备份数据包同步上传的目标目录，例如 /data/backup',
+      sftpTestConn: '测试连接',
+      sftpTestPass: '连通性测试通过，可以保存',
+      sftpTestFail: '连通性测试未通过',
+      sftpNeedTest: '请先「测试连接」，测试通过后才允许保存（FR-3RD-002）',
+      sftpDeleteTitle: '删除 SFTP 接入',
+      sftpDeleteBody: '确认删除当前 SFTP 接入？删除后「备份恢复 · 远程备份」将不可用。',
+      sftpDeleteHint: '连接仍被用途场景引用时不允许直接删除：请先停用该接入，再删除（FR-3RD-002）',
+      sftpDeleteBlockedTitle: '无法删除 SFTP 接入',
+      sftpDeleteBlockedBody: '该连接正被「{ref}」引用：请先停用该接入，再执行删除（FR-3RD-002）',
+      toastSftpCreated: 'SFTP 接入已配置（原型演示）',
+      toastSftpSaved: 'SFTP 接入已保存（原型演示）',
+      toastSftpDeleted: 'SFTP 接入已删除（原型演示）',
+      toastSftpOn: 'SFTP 接入已启用（原型演示）',
+      toastSftpOff: 'SFTP 接入已停用，引用方暂不可用（原型演示）',
+      bakRemoteOff: 'SFTP 接入已停用',
+      /* CA 服务器接入 */
+      caCard: 'CA 服务器配置',
+      caCreate: '接入CA服务器',
+      caCreateTitle: '接入CA服务器',
+      caEditTitle: '修改CA服务器接入',
+      caEditSub: 'OMS 唯一接入的 CA 服务器：基础信息与证书材料，用于 Nginx 对外证书签发与续约（FR-3RD-003）',
+      caFormNote: 'CA 服务器最多接入一个：本能力不提供回退为自签证书的机制（FR-3RD-003）',
+      caNotConfigured: '尚未接入 CA 服务器（OMS 全局最多接入一个）',
+      caEmptyNote: 'OMS 最多只接入一个 CA 服务器，用于 Nginx 对外证书的签发与续约（FR-3RD-003）',
+      caNote: 'CA 服务器最多接入一个；唯一 CA 不可用且证书临近到期时上报告警，不回退自签证书（FR-3RD-003）',
+      caSecBase: '基础信息',
+      caSecFiles: '证书与私钥',
+      caIpPh: '请输入 IPv4 地址',
+      caIpHint: 'CA 服务器仅支持 IPv4 地址',
+      caPortHint: 'CA 服务监听端口，例如 8443',
+      caPathPh: '请输入 CA 服务路径',
+      caPathHint: 'CA 服务的接入路径前缀，例如 /ca/oms',
+      caRenewDays: '证书自动更新提前天数',
+      caRenewDaysHint: '默认 30 天，范围 7-180 天',
+      caRenewDaysValue: '{n} 天',
+      errCaRenewDays: '证书自动更新提前天数需为 7-180 之间的整数',
+      caFileCert: '证书',
+      caFileCa: 'CA证书',
+      caFileKey: '证书私钥',
+      caKeyPwd: '私钥密码',
+      caKeyPwdPh: '请输入私钥密码',
+      caKeyPwdHint: '私钥密码加密保存，修改时不回显明文；不修改请留空',
+      caKeyPwdSet: '已配置',
+      caKeyPwdNoEcho: '（加密保存，不回显）',
+      caFilesHint: '上传用于 CA 签发 / 续约的证书、CA证书与证书私钥；修改时重新上传即替换当前文件',
+      caScope: '服务对象',
+      caScopeValue: 'OMS 对外的 Nginx 证书（M13 证书管理的签发与续约）',
+      caDeleteTitle: '删除 CA 服务器接入',
+      caDeleteBody: '确认删除当前 CA 服务器接入？',
+      caDeleteHint: '删除后无法再通过 CA 签发或续约证书；已签发的证书不受影响（FR-3RD-003）',
+      toastCaCreated: 'CA 服务器接入已保存（原型演示）',
+      toastCaSaved: 'CA 服务器接入已更新（原型演示）',
+      toastCaDeleted: 'CA 服务器接入已删除（原型演示）',
 
       /* ---- 告警列表（M17 告警管理） ---- */
       almTitle: '告警列表',
@@ -2551,6 +2699,147 @@
       toastBakSaved: 'Backup settings saved (prototype)',
       toastBakNow: 'Full backup started and queued in the task center (prototype)',
 
+      /* ---- Integrations (M14) ---- */
+      intTitle: 'Integrations',
+      intSub: 'Unified channels to external infrastructure: SNMP alarm reporting, SFTP file transfer and CA certificate issuance (M14)',
+      intColIp: 'IP Address',
+      intColPort: 'Port',
+      intColUser: 'User Name',
+      intColPath: 'Path',
+      intColPwd: 'Password',
+      intIpPh: 'Enter an IPv4 or IPv6 address',
+      intIpHint: 'IPv4 and IPv6 are supported; 192.0.2.1 / 198.51.100.1 / 2001:db8::1 are unreachable in this prototype',
+      pwdKeepPh: 'Leave blank to keep unchanged',
+      errIpFormat: 'Invalid address: enter a valid IPv4 or IPv6 address',
+      errIpv4Only: 'Only IPv4 addresses are supported',
+      errSnmpPort: 'Port must be an integer between 1 and 65535',
+      errUnreachable: 'Target address is unreachable (simulated)',
+      langZh: 'Chinese',
+      langEn: 'English',
+      /* SNMP access */
+      snmpCard: 'SNMP Access',
+      snmpCreate: 'Create SNMP Access',
+      snmpCreateTitle: 'Create SNMP Access',
+      snmpEditTitle: 'Edit SNMP Access',
+      snmpEditSub: 'SNMP Trap reporting channel: version, connectivity check and target (FR-3RD-001)',
+      snmpNote: 'The reporting method is fixed to SNMP Trap; each channel works independently and stops reporting when disabled (FR-3RD-001)',
+      snmpColName: 'Name',
+      snmpNamePh: 'Enter a channel name',
+      snmpVersion: 'SNMP Version',
+      snmpVerV3: 'SNMPv3',
+      snmpVerV2c: 'SNMPv2c',
+      snmpVersionHint: 'SNMPv3 requires authentication and encryption settings; SNMPv2c does not',
+      snmpVerify: 'Verify connectivity',
+      snmpVerifyHint: 'When on, connectivity to the target is checked on save; a failed check prevents enabling the channel (saved as disabled)',
+      snmpPortHint: 'Default 162, range 1-65535',
+      snmpUser: 'Security User Name',
+      snmpUserPh: 'Enter the security user name',
+      snmpAuthAlg: 'Authentication Algorithm',
+      snmpPrivAlg: 'Encryption Algorithm',
+      snmpPwdCheck: 'Validate authentication and encryption password complexity',
+      snmpPwdCheckHint: 'When on, passwords follow the security policy: 8+ characters with at least 3 of upper case, lower case, digit, symbol',
+      snmpAuthPwd: 'Authentication Password',
+      snmpAuthPwdPh: 'Enter the authentication password',
+      snmpAuthPwd2: 'Confirm Authentication Password',
+      snmpPrivPwd: 'Data Encryption Password',
+      snmpPrivPwdPh: 'Enter the data encryption password',
+      snmpPrivPwd2: 'Confirm Data Encryption Password',
+      snmpV2cHint: 'SNMPv2c needs no authentication or encryption: security user name, algorithms and passwords do not apply',
+      snmpLang: 'Language',
+      snmpReportType: 'Reported Data Type',
+      snmpReportAlarm: 'Alarms',
+      snmpReportHint: 'Only alarms can be reported today; leaving it unchecked means the channel reports nothing',
+      snmpEngineId: 'Engine ID',
+      snmpEngineIdHint: 'Generated by the system when the channel is created; used as the SNMP reporting identity and cannot be changed',
+      snmpDescPh: 'Describe what this channel is used for',
+      snmpFoot: '{n} SNMP channel(s)',
+      snmpFootHint: 'The reporting method is fixed to SNMP Trap (no Inform); version and credentials apply per channel (FR-3RD-001)',
+      snmpEmpty: 'No SNMP channel yet — use Create SNMP Access on the right',
+      snmpDeleteTitle: 'Delete SNMP Access',
+      snmpDeleteBody: 'Delete SNMP channel "{name}"?',
+      snmpDeleteHint: 'The channel stops reporting alarms; historical operations remain in the operation log (FR-3RD-001)',
+      toastSnmpCreated: 'SNMP channel created with a generated engine ID (prototype)',
+      toastSnmpSaved: 'SNMP channel saved (prototype)',
+      toastSnmpDeleted: 'SNMP channel "{name}" deleted (prototype)',
+      toastSnmpOn: 'SNMP channel "{name}" enabled (prototype)',
+      toastSnmpOff: 'SNMP channel "{name}" disabled (prototype)',
+      toastSnmpUnreachable: 'Connectivity check failed: the channel was saved as disabled (prototype)',
+      /* SFTP access */
+      sftpCard: 'SFTP Configuration',
+      sftpCreate: 'Configure SFTP Access',
+      sftpCreateTitle: 'Configure SFTP Access',
+      sftpEditTitle: 'Edit SFTP Access',
+      sftpEditSub: 'The single SFTP file server connection of OMS: server information and credentials (FR-3RD-002)',
+      sftpFormNote: 'Only one SFTP connection is allowed: backup remote delivery and other scenarios reuse it (FR-3RD-002)',
+      sftpFormHint: 'After any change, re-test connectivity — saving is enabled only after a successful test; credentials are stored encrypted and never echoed (FR-3RD-002)',
+      sftpNotConfigured: 'No SFTP file server configured yet (at most one in OMS)',
+      sftpEmptyNote: 'Only one SFTP connection is allowed; backup delivery and other scenarios reuse it (FR-3RD-002)',
+      sftpNote: 'Credentials are stored encrypted and never echoed back; disable the connection before deleting it while it is still referenced (FR-3RD-002)',
+      sftpRef: 'Referenced By',
+      sftpRefBackup: 'Backup · Remote backup',
+      sftpRefActive: 'In use',
+      sftpRefInactive: 'Not in use',
+      sftpTestedAt: 'Last Test',
+      sftpPortHint: 'Default 22, range 1-65535',
+      sftpUserPh: 'Enter the user name',
+      sftpPwdPh: 'Enter the password',
+      sftpPwdHint: 'Credentials are stored encrypted and not echoed on edit; leave blank to keep unchanged',
+      sftpPathPh: 'Enter the target directory path',
+      sftpPathHint: 'Target directory for backup packages, e.g. /data/backup',
+      sftpTestConn: 'Test Connection',
+      sftpTestPass: 'Connectivity test passed — you can save now',
+      sftpTestFail: 'Connectivity test failed',
+      sftpNeedTest: 'Run Test Connection first; saving is enabled only after a successful test (FR-3RD-002)',
+      sftpDeleteTitle: 'Delete SFTP Access',
+      sftpDeleteBody: 'Delete the current SFTP access? Backup · Remote backup will become unavailable.',
+      sftpDeleteHint: 'A connection still referenced by scenarios cannot be deleted directly: disable it first, then delete (FR-3RD-002)',
+      sftpDeleteBlockedTitle: 'Cannot delete SFTP access',
+      sftpDeleteBlockedBody: 'The connection is still referenced by "{ref}": disable the access first, then delete it (FR-3RD-002)',
+      toastSftpCreated: 'SFTP access configured (prototype)',
+      toastSftpSaved: 'SFTP access saved (prototype)',
+      toastSftpDeleted: 'SFTP access deleted (prototype)',
+      toastSftpOn: 'SFTP access enabled (prototype)',
+      toastSftpOff: 'SFTP access disabled; referencing scenarios are unavailable (prototype)',
+      bakRemoteOff: 'SFTP access disabled',
+      /* CA server access */
+      caCard: 'CA Server Configuration',
+      caCreate: 'Add CA Server',
+      caCreateTitle: 'Add CA Server',
+      caEditTitle: 'Edit CA Server Access',
+      caEditSub: 'The single CA server of OMS: basic information and certificate material for Nginx certificate issuance and renewal (FR-3RD-003)',
+      caFormNote: 'At most one CA server: no fallback to self-signed certificates is provided (FR-3RD-003)',
+      caNotConfigured: 'No CA server configured yet (at most one in OMS)',
+      caEmptyNote: 'At most one CA server is allowed, used to issue and renew the external Nginx certificate (FR-3RD-003)',
+      caNote: 'At most one CA server; when it is unavailable and the certificate nears expiry an alarm is raised, with no self-signed fallback (FR-3RD-003)',
+      caSecBase: 'Basic Information',
+      caSecFiles: 'Certificate and Key',
+      caIpPh: 'Enter an IPv4 address',
+      caIpHint: 'Only IPv4 addresses are supported for a CA server',
+      caPortHint: 'CA service listening port, e.g. 8443',
+      caPathPh: 'Enter the CA service path',
+      caPathHint: 'Access path prefix of the CA service, e.g. /ca/oms',
+      caRenewDays: 'Auto-renewal Lead Days',
+      caRenewDaysHint: 'Default 30 days, range 7-180 days',
+      caRenewDaysValue: '{n} days',
+      errCaRenewDays: 'Auto-renewal lead days must be an integer between 7 and 180',
+      caFileCert: 'Certificate',
+      caFileCa: 'CA Certificate',
+      caFileKey: 'Certificate Private Key',
+      caKeyPwd: 'Private Key Password',
+      caKeyPwdPh: 'Enter the private key password',
+      caKeyPwdHint: 'The private key password is stored encrypted and not echoed on edit; leave blank to keep unchanged',
+      caKeyPwdSet: 'Configured',
+      caKeyPwdNoEcho: '(stored encrypted, never echoed)',
+      caFilesHint: 'Upload the certificate, CA certificate and private key used for CA issuance/renewal; uploading again on edit replaces the current file',
+      caScope: 'Serves',
+      caScopeValue: 'The external Nginx certificate of OMS (issuance and renewal in M13 Certificates)',
+      caDeleteTitle: 'Delete CA Server Access',
+      caDeleteBody: 'Delete the current CA server access?',
+      caDeleteHint: 'After deletion certificates can no longer be issued or renewed through the CA; already issued certificates are unaffected (FR-3RD-003)',
+      toastCaCreated: 'CA server access saved (prototype)',
+      toastCaSaved: 'CA server access updated (prototype)',
+      toastCaDeleted: 'CA server access deleted (prototype)',
+
       /* ---- Alarm list (M17) ---- */
       almTitle: 'Alarms',
       almSub: 'View current and historical alarms; clear alarms and configure blocking rules (M17)',
@@ -2962,7 +3251,8 @@
   /* 「部分权限」模拟集：只授权其中几项，用于验证未授权菜单不展示 */
   var PARTIAL_ALLOWED = ['home', 'cert', 'oplog', 'alarmList', 'account'];
 
-  /* 安全管理员的可见菜单（仅三项，M15 + M08 + M01） */
+  /* 安全管理员的可见菜单（首页 + 安全策略 + 操作日志 + 账户管理 + 第三方接入的 CA 配置块，M15 + M08 + M01 + M14） */
+  /* 安全管理员可见菜单（首页 + 安全策略 + 操作日志 + 账户管理；不含第三方接入，评审确认） */
   var SECADMIN_ALLOWED = ['home', 'security', 'oplog', 'account'];
 
   /* 设置子菜单分组：多条目的组带组名，单条目组直接平铺
@@ -2985,8 +3275,8 @@
       duty: { zh: '系统配置、账户与用户组管理、角色绑定、备份恢复、证书维护、告警处置',
               en: 'System configuration, accounts and groups, role binding, backup, certificates, alarms' } },
     { id: 'secadmin', zh: '安全管理员', en: 'Security Administrator',
-      duty: { zh: '安全策略（账户/密码/会话）、账户激活与锁定、CA 服务器对接',
-              en: 'Security policies, account activation/locking, CA integration' } },
+      duty: { zh: '安全策略（账户/密码/会话）、账户激活与锁定',
+              en: 'Security policies, account activation/locking' } },
     { id: 'secauditor', zh: '审计管理员', en: 'Audit Administrator',
       duty: { zh: '日志查询与审计、授权关系查看（只读）',
               en: 'Log query and audit, read-only view of authorizations' } },
@@ -4463,6 +4753,510 @@
     '</div>';
   }
 
+  /* ===================== 第三方接入（M14 第三方接入） =====================
+     页面三块：SNMP 接入（可多条通道）/ SFTP 接入（全局唯一）/ CA 服务器接入（全局唯一）。
+     - SFTP 是全局唯一连接：系统备份页的「远程备份」直接读取本页配置，不重复配置（M10）
+     - CA 服务器供 M13 证书管理的 Nginx 对外证书签发与续约使用
+     - 三块均由系统管理员维护；安全管理员无本页入口（评审确认，安全管理员不负责 CA 对接） */
+
+  /* ---------- SNMP 接入（FR-3RD-001） ---------- */
+  var SNMP_VERSIONS = [
+    { id: 'v3',  key: 'snmpVerV3' },
+    { id: 'v2c', key: 'snmpVerV2c' }
+  ];
+  var SNMP_AUTH_ALGS = ['SHA-512', 'SHA-384', 'SHA-256', 'SHA', 'MD5'];
+  var SNMP_PRIV_ALGS = ['AES-256', 'AES-128', 'DES'];
+  var SNMP_LANGS = [{ id: 'zh-CN', key: 'langZh' }, { id: 'en-US', key: 'langEn' }];
+  /* 上报数据类型：当前只有「告警」可勾选（可勾可不勾） */
+  var SNMP_REPORT_TYPES = [{ id: 'alarm', key: 'snmpReportAlarm' }];
+  /* 原型：下列地址模拟「不可达」，用于演示连通性校验失败（TEST-NET / 保留地址） */
+  var UNREACHABLE_HOSTS = ['192.0.2.1', '198.51.100.1', '2001:db8::1'];
+  var SNMP_PORT_DEFAULT = '162';
+
+  var SNMP_LIST = [
+    { id: 'snmp-1', name: '网管中心 Trap 接收', version: 'v3', verify: true,
+      port: '162', ip: '192.168.10.21', user: 'oms_trap',
+      authAlg: 'SHA-256', privAlg: 'AES-128', pwdCheck: true,
+      lang: 'zh-CN', report: ['alarm'], engineId: '0x80001F8880E9A1B2C3D4E5F6',
+      enabled: true, desc: '上报至运维网管中心的 SNMP Trap 接收端' },
+    { id: 'snmp-2', name: '日志平台 Trap', version: 'v2c', verify: false,
+      port: '1162', ip: '2001:db8:ac10::21', user: '',
+      authAlg: '', privAlg: '', pwdCheck: false,
+      lang: 'en-US', report: [], engineId: '0x80001F8880A1B2C3D4E5F607',
+      enabled: false, desc: '仅保留通道，暂不上报（上报数据类型未勾选）' }
+  ];
+  function snmpById(id) {
+    return SNMP_LIST.filter(function (c) { return c.id === id; })[0];
+  }
+  function snmpVerName(c) {
+    var v = SNMP_VERSIONS.filter(function (x) { return x.id === c.version; })[0];
+    return v ? t(v.key) : c.version;
+  }
+  function snmpLangName(c) {
+    var l = SNMP_LANGS.filter(function (x) { return x.id === c.lang; })[0];
+    return l ? t(l.key) : c.lang;
+  }
+  function snmpReportText(c) {
+    if (!c.report || !c.report.length) return '';
+    return c.report.map(function (id) {
+      var r = SNMP_REPORT_TYPES.filter(function (x) { return x.id === id; })[0];
+      return r ? t(r.key) : id;
+    }).join(' · ');
+  }
+  function genEngineId() {
+    var hex = '';
+    for (var i = 0; i < 12; i++) hex += '0123456789ABCDEF'.charAt(Math.floor(Math.random() * 16));
+    return '0x80001F8880' + hex;
+  }
+
+  /* ---------- SFTP 接入（FR-3RD-002，全局唯一） ---------- */
+  /* 由「第三方接入」页面配置，系统备份页只读取；enabled=false 表示已停用（引用方不可用） */
+  var SFTP = {
+    configured: true,
+    enabled: true,
+    host: '192.168.1.100', port: '22', user: 'omsbackup', path: '/data/backup',
+    testedAt: '2026-10-12 09:15:00'
+  };
+  function sftpEndpoint() {
+    return (SFTP.user ? SFTP.user + '@' : '') + SFTP.host + ':' + SFTP.port + ' ' + SFTP.path;
+  }
+  /* 远程备份可用 = 已配置且未停用 */
+  function sftpReady() { return !!(SFTP.configured && SFTP.enabled); }
+  /* 右下角原型面板的「已配置远程 SFTP」开关与本页配置保持同步 */
+  function syncProtoSftp() {
+    var cb = $('protoSftp');
+    if (cb) cb.checked = !!SFTP.configured;
+  }
+
+  /* ---------- CA 服务器接入（FR-3RD-003，全局唯一） ---------- */
+  var CA = {
+    configured: true,
+    host: '10.20.30.40', port: '8443', path: '/ca/oms',
+    renewDays: 30,
+    files: {
+      cert: { name: 'oms-nginx.crt', size: '4.2 KB' },
+      ca:   { name: 'oms-ca.crt',    size: '3.1 KB' },
+      key:  { name: 'oms-nginx.key', size: '1.7 KB' }
+    },
+    updatedAt: '2026-10-05 16:40:00'
+  };
+  function caFileText(kind) {
+    var f = CA.configured && CA.files[kind];
+    return f ? f.name + ' · ' + f.size : '';
+  }
+
+  /* ---------- 地址格式 ---------- */
+  function ipv4Ok(s) {
+    var parts = String(s).split('.');
+    if (parts.length !== 4) return false;
+    return parts.every(function (p) {
+      return /^\d{1,3}$/.test(p) && Number(p) <= 255;
+    });
+  }
+  function ipv6Ok(s) {
+    if (String(s).indexOf(':') === -1) return false;
+    if (s.indexOf('::') !== s.lastIndexOf('::')) return false;
+    var groups = [];
+    s.split('::').forEach(function (part) {
+      if (part) groups = groups.concat(part.split(':'));
+    });
+    if (s.indexOf('::') === -1 && groups.length !== 8) return false;
+    if (s.indexOf('::') !== -1 && groups.length > 7) return false;
+    return groups.every(function (g) { return /^[0-9a-fA-F]{1,4}$/.test(g); });
+  }
+  function ipOk(s) { return ipv4Ok(s) || ipv6Ok(s); }
+  function portOk(v) {
+    return /^\d{1,5}$/.test(v) && Number(v) >= 1 && Number(v) <= 65535;
+  }
+  function selectOptions(list, current) {
+    return list.map(function (o) {
+      var value = o.id != null ? o.id : o;
+      var label = o.key ? t(o.key) : o;
+      return '<option value="' + esc(value) + '"' + (value === current ? ' selected' : '') + '>' +
+        esc(label) + '</option>';
+    }).join('');
+  }
+  /* 第三方接入页统一用「启用 / 禁用」（与告警设置页的状态列一致） */
+  function statusBadge(on) {
+    return '<span class="badge ' + (on ? 'badge-ok' : 'badge-plain') + '">' +
+      t(on ? 'ruleOn' : 'ruleOff') + '</span>';
+  }
+
+  /* ---------- SNMP 接入：列表 ---------- */
+  function snmpRowHTML(c) {
+    var rep = snmpReportText(c);
+    return '<tr data-snmp="' + esc(c.id) + '">' +
+      '<td><span class="cell-name"><b>' + esc(c.name) + '</b></span></td>' +
+      '<td class="col-group">' + esc(snmpVerName(c)) + '</td>' +
+      '<td class="col-ip">' + esc(c.ip) + '</td>' +
+      '<td class="col-group">' + esc(c.port) + '</td>' +
+      '<td>' + (rep ? '<span class="cell-tags">' + esc(rep) + '</span>'
+                    : '<span class="cell-empty">—</span>') + '</td>' +
+      '<td class="col-ip" title="' + esc(c.engineId) + '">' +
+        '<span class="remark-text cell-engine">' + esc(c.engineId) + '</span></td>' +
+      '<td>' + statusBadge(c.enabled) + '</td>' +
+      '<td><div class="row-actions">' +
+        '<button type="button" class="link-btn" data-snmp-act="edit">' + t('ruleEdit') + '</button>' +
+        '<button type="button" class="link-btn" data-snmp-act="toggle">' +
+          (c.enabled ? t('ruleOff') : t('ruleOn')) + '</button>' +
+        '<button type="button" class="link-btn is-danger" data-snmp-act="delete">' +
+          t('ruleDelete') + '</button>' +
+      '</div></td>' +
+    '</tr>';
+  }
+  function snmpCardHTML() {
+    return '<div class="table-card">' +
+      '<div class="des-head">' + icon('shield') + t('snmpCard') +
+        '<span class="des-head-extra">' + tf('snmpFoot', { n: SNMP_LIST.length }) + '</span>' +
+        '<button type="button" class="btn btn-sm btn-primary" id="btnSnmpCreate">' +
+          icon('plus') + t('snmpCreate') + '</button>' +
+      '</div>' +
+      '<div class="table-scroll"><table class="data">' +
+        '<thead><tr>' +
+          '<th>' + t('snmpColName') + '</th>' +
+          '<th>' + t('snmpVersion') + '</th>' +
+          '<th>' + t('intColIp') + '</th>' +
+          '<th>' + t('intColPort') + '</th>' +
+          '<th>' + t('snmpReportType') + '</th>' +
+          '<th>' + t('snmpEngineId') + '</th>' +
+          '<th>' + t('ruleColStatus') + '</th>' +
+          '<th>' + t('almColOp') + '</th>' +
+        '</tr></thead>' +
+        '<tbody>' + (SNMP_LIST.length ? SNMP_LIST.map(snmpRowHTML).join('') :
+          '<tr><td colspan="8" style="text-align:center;color:var(--text-3);padding:38px 0;">' +
+          t('snmpEmpty') + '</td></tr>') +
+        '</tbody>' +
+      '</table></div>' +
+      '<div class="table-foot">' +
+        '<span>' + tf('snmpFoot', { n: SNMP_LIST.length }) + '</span>' +
+        '<span class="filter-spacer"></span>' +
+        '<span>' + t('snmpFootHint') + '</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  /* ---------- SFTP 接入：卡片 ---------- */
+  function sftpCardHTML() {
+    if (!SFTP.configured) {
+      return '<section class="des-card labels-wide">' +
+        '<div class="des-head">' + icon('file') + t('sftpCard') +
+          '<span class="des-head-extra">' + statusBadge(false) + '</span></div>' +
+        '<div style="padding:14px"><div class="scope-empty">' + t('sftpNotConfigured') +
+          '</div></div>' +
+        '</section>' +
+        '<div class="action-bar">' +
+          '<span class="bar-note">' + t('sftpEmptyNote') + '</span>' +
+          '<button type="button" class="btn btn-primary" id="btnSftpEdit">' + icon('plus') +
+            t('sftpCreate') + '</button>' +
+        '</div>';
+    }
+    return '<section class="des-card labels-wide">' +
+      '<div class="des-head">' + icon('file') + t('sftpCard') +
+        '<span class="des-head-extra">' + statusBadge(SFTP.enabled) + '</span></div>' +
+      '<div class="des-row"><dt>' + t('intColIp') + '</dt><dd class="des-mono">' +
+        esc(SFTP.host) + '</dd></div>' +
+      '<div class="des-row"><dt>' + t('intColPort') + '</dt><dd class="des-mono">' +
+        esc(SFTP.port) + '</dd></div>' +
+      '<div class="des-row"><dt>' + t('intColUser') + '</dt><dd class="des-mono">' +
+        esc(SFTP.user) + '</dd></div>' +
+      '<div class="des-row"><dt>' + t('intColPath') + '</dt><dd class="des-mono">' +
+        esc(SFTP.path) + '</dd></div>' +
+      '<div class="des-row"><dt>' + t('sftpRef') + '</dt><dd>' + sftpRefHTML() + '</dd></div>' +
+      '<div class="des-row"><dt>' + t('sftpTestedAt') + '</dt><dd class="des-mono">' +
+        esc(SFTP.testedAt || '—') + '</dd></div>' +
+      '</section>' +
+      '<div class="action-bar">' +
+        '<span class="bar-note">' + t('sftpNote') + '</span>' +
+        '<button type="button" class="btn" id="btnSftpEdit">' + t('ruleEdit') + '</button>' +
+        '<button type="button" class="btn" id="btnSftpToggle">' +
+          t(SFTP.enabled ? 'ruleOff' : 'ruleOn') + '</button>' +
+        '<button type="button" class="btn btn-danger" id="btnSftpDelete">' +
+          t('ruleDelete') + '</button>' +
+      '</div>';
+  }
+  /* 引用方：备份恢复的「远程备份」复用该连接（FR-BAK-001） */
+  function sftpRefHTML() {
+    return '<span class="des-mono">' + t('sftpRefBackup') + '</span> ' +
+      '<span class="badge ' + (sftpReady() ? 'badge-ok' : 'badge-plain') + '">' +
+      t(sftpReady() ? 'sftpRefActive' : 'sftpRefInactive') + '</span>';
+  }
+
+  /* ---------- CA 服务器接入：卡片 ---------- */
+  function caCardHTML() {
+    if (!CA.configured) {
+      return '<section class="des-card labels-wide">' +
+        '<div class="des-head">' + icon('lock') + t('caCard') +
+          '<span class="des-head-extra">' + statusBadge(false) + '</span></div>' +
+        '<div style="padding:14px"><div class="scope-empty">' + t('caNotConfigured') +
+          '</div></div>' +
+        '</section>' +
+        '<div class="action-bar">' +
+          '<span class="bar-note">' + t('caEmptyNote') + '</span>' +
+          '<button type="button" class="btn btn-primary" id="btnCaEdit">' + icon('plus') +
+            t('caCreate') + '</button>' +
+        '</div>';
+    }
+    return '<section class="des-card labels-wide">' +
+      '<div class="des-head">' + icon('lock') + t('caCard') +
+        '<span class="des-head-extra">' + statusBadge(true) + '</span></div>' +
+      '<div class="des-row"><dt>' + t('intColIp') + '</dt><dd class="des-mono">' +
+        esc(CA.host) + '</dd></div>' +
+      '<div class="des-row"><dt>' + t('intColPort') + '</dt><dd class="des-mono">' +
+        esc(CA.port) + '</dd></div>' +
+      '<div class="des-row"><dt>' + t('intColPath') + '</dt><dd class="des-mono">' +
+        esc(CA.path) + '</dd></div>' +
+      '<div class="des-row"><dt>' + t('caRenewDays') + '</dt><dd>' +
+        tf('caRenewDaysValue', { n: CA.renewDays }) + '</dd></div>' +
+      '<div class="des-row"><dt>' + t('caFileCert') + '</dt><dd class="des-mono">' +
+        esc(caFileText('cert')) + '</dd></div>' +
+      '<div class="des-row"><dt>' + t('caFileCa') + '</dt><dd class="des-mono">' +
+        esc(caFileText('ca')) + '</dd></div>' +
+      '<div class="des-row"><dt>' + t('caFileKey') + '</dt><dd class="des-mono">' +
+        esc(caFileText('key')) + '</dd></div>' +
+      '<div class="des-row"><dt>' + t('caKeyPwd') + '</dt><dd>' +
+        '<span class="badge badge-ok">' + t('caKeyPwdSet') + '</span> ' +
+        '<span class="des-mono">' + t('caKeyPwdNoEcho') + '</span></dd></div>' +
+      '<div class="des-row"><dt>' + t('caScope') + '</dt><dd>' + t('caScopeValue') + '</dd></div>' +
+      '</section>' +
+      '<div class="action-bar">' +
+        '<span class="bar-note">' + t('caNote') + '</span>' +
+        '<button type="button" class="btn" id="btnCaEdit">' + t('ruleEdit') + '</button>' +
+        '<button type="button" class="btn btn-danger" id="btnCaDelete">' +
+          t('ruleDelete') + '</button>' +
+      '</div>';
+  }
+
+  function renderIntegrationPage() {
+    /* 三块（SNMP / SFTP / CA）统一由系统管理员维护；
+       安全管理员无本页访问入口（菜单不可见，直达回落首页） */
+    content.innerHTML =
+      '<div class="page-head-row">' +
+        '<div class="page-head">' +
+          '<h1 class="page-title">' + t('intTitle') + '</h1>' +
+          '<p class="page-sub">' + t('intSub') + '</p>' +
+        '</div>' +
+      '</div>' +
+      snmpCardHTML() + sftpCardHTML() +
+      caCardHTML();
+    syncProtoSftp();
+    bindIntegrationPage();
+  }
+
+  function bindIntegrationPage() {
+    if ($('btnSnmpCreate')) $('btnSnmpCreate').addEventListener('click', function () {
+      openSnmpDrawer(null);
+    });
+    content.querySelectorAll('[data-snmp-act]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var c = snmpById(b.closest('tr').getAttribute('data-snmp'));
+        if (!c) return;
+        var act = b.getAttribute('data-snmp-act');
+        if (act === 'edit') openSnmpDrawer(c);
+        else if (act === 'toggle') toggleSnmp(c.id, !c.enabled);
+        else if (act === 'delete') openSnmpDeleteModal(c.id);
+      });
+    });
+    if ($('btnSftpEdit')) $('btnSftpEdit').addEventListener('click', function () {
+      openSftpDrawer();
+    });
+    if ($('btnSftpToggle')) $('btnSftpToggle').addEventListener('click', function () {
+      toggleSftp(!SFTP.enabled);
+    });
+    if ($('btnSftpDelete')) $('btnSftpDelete').addEventListener('click', function () {
+      openSftpDeleteModal();
+    });
+    if ($('btnCaEdit')) $('btnCaEdit').addEventListener('click', function () {
+      openCaDrawer();
+    });
+    if ($('btnCaDelete')) $('btnCaDelete').addEventListener('click', function () {
+      openCaDeleteModal();
+    });
+  }
+
+  function toggleSnmp(id, on) {
+    var c = snmpById(id);
+    if (!c) return;
+    c.enabled = on;
+    renderIntegrationPage();
+    toast(tf(on ? 'toastSnmpOn' : 'toastSnmpOff', { name: c.name }), on ? 'ok' : 'info');
+  }
+  function toggleSftp(on) {
+    SFTP.enabled = on;
+    renderIntegrationPage();
+    toast(t(on ? 'toastSftpOn' : 'toastSftpOff'), on ? 'ok' : 'info');
+  }
+
+  /* ---------- SNMP 接入：创建 / 修改抽屉 ---------- */
+  function openSnmpDrawer(c) {
+    var draft = c ? {
+      id: c.id, name: c.name, version: c.version, verify: c.verify, port: c.port, ip: c.ip,
+      user: c.user, authAlg: c.authAlg, privAlg: c.privAlg, pwdCheck: c.pwdCheck,
+      lang: c.lang, report: c.report.slice(), desc: c.desc, engineId: c.engineId,
+      authPwd: '', authPwd2: '', privPwd: '', privPwd2: ''
+    } : {
+      id: null, name: '', version: 'v3', verify: true, port: SNMP_PORT_DEFAULT, ip: '',
+      user: '', authAlg: 'SHA-256', privAlg: 'AES-128', pwdCheck: true,
+      lang: 'zh-CN', report: ['alarm'], desc: '', engineId: '',
+      authPwd: '', authPwd2: '', privPwd: '', privPwd2: ''
+    };
+    openDrawer('snmpedit', null, {
+      snmp: draft, titleKey: c ? 'snmpEditTitle' : 'snmpCreateTitle'
+    });
+  }
+  function syncSnmpDraft() {
+    var d = drawerState.snmp;
+    if (!d) return;
+    ['name', 'port', 'ip', 'user', 'authAlg', 'privAlg', 'desc'].forEach(function (k) {
+      var map = { name: 'snmpName', port: 'snmpPort', ip: 'snmpIp', user: 'snmpUser',
+                  authAlg: 'snmpAuthAlg', privAlg: 'snmpPrivAlg', desc: 'snmpDesc' };
+      d[k] = val(map[k]);
+    });
+    d.lang = val('snmpLang') || d.lang;
+    d.authPwd = val('snmpAuthPwd');
+    d.authPwd2 = val('snmpAuthPwd2');
+    d.privPwd = val('snmpPrivPwd');
+    d.privPwd2 = val('snmpPrivPwd2');
+    d.report = Array.prototype.slice.call($('drawerBody').querySelectorAll('[data-report]'))
+      .filter(function (cb) { return cb.checked; })
+      .map(function (cb) { return cb.getAttribute('data-report'); });
+  }
+  function openSnmpDeleteModal(id) {
+    var c = snmpById(id);
+    if (!c) return;
+    openConfirmModal({
+      title: t('snmpDeleteTitle'),
+      bodyHTML: '<p>' + tf('snmpDeleteBody', { name: esc(c.name) }) + '</p>' +
+        '<p class="f-hint">' + t('snmpDeleteHint') + '</p>',
+      confirmText: t('ruleDelete'),
+      danger: true,
+      onConfirm: function () {
+        SNMP_LIST.splice(SNMP_LIST.indexOf(c), 1);
+        renderIntegrationPage();
+        toast(tf('toastSnmpDeleted', { name: c.name }), 'ok');
+      }
+    });
+  }
+
+  /* ---------- SFTP 接入：配置 / 修改抽屉（先测试连通性，通过后才允许保存） ---------- */
+  function openSftpDrawer() {
+    var draft = SFTP.configured ? {
+      host: SFTP.host, port: SFTP.port, user: SFTP.user, pwd: '', path: SFTP.path
+    } : { host: '', port: '22', user: '', pwd: '', path: '' };
+    openDrawer('sftpedit', null, {
+      sftp: draft, sftpTested: false,
+      titleKey: SFTP.configured ? 'sftpEditTitle' : 'sftpCreateTitle'
+    });
+  }
+  function syncSftpDraft() {
+    var d = drawerState.sftp;
+    if (!d) return;
+    d.host = val('sftpIp');
+    d.port = val('sftpPort');
+    d.user = val('sftpUser');
+    d.pwd = val('sftpPwd');
+    d.path = val('sftpPath');
+  }
+  /* 原型模拟：地址格式、端口、必填项与「不可达地址」共同决定测试结果 */
+  function sftpTestNow() {
+    var d = drawerState.sftp;
+    if (!d.host) return 'errRequired';
+    if (!ipOk(d.host)) return 'errIpFormat';
+    if (!portOk(d.port)) return 'errSnmpPort';
+    if (!d.user || !d.path) return 'errRequired';
+    if (UNREACHABLE_HOSTS.indexOf(d.host) !== -1) return 'errUnreachable';
+    return '';
+  }
+  function sftpTestMsgText() {
+    if (drawerState.sftpTested) return t('sftpTestPass');
+    if (drawerState.sftpTestError) {
+      return t('sftpTestFail') + '：' + t(drawerState.sftpTestError);
+    }
+    return t('sftpNeedTest');
+  }
+  function refreshSftpGate() {
+    var btn = $('drawerSubmit');
+    if (btn) btn.disabled = !drawerState.sftpTested;
+    var msg = $('sftpTestMsg');
+    if (msg) {
+      msg.textContent = sftpTestMsgText();
+      msg.className = 'f-hint' + (drawerState.sftpTested ? ' is-ok-msg'
+                                : (drawerState.sftpTestError ? ' is-bad-msg' : ''));
+    }
+    var wrap = $('drawerBody').querySelector('[data-field="sftpTested"]');
+    if (wrap) {
+      wrap.classList.remove('has-error');
+      wrap.querySelector('.f-error').textContent = '';
+    }
+  }
+  /* 「测试连接」：通过后放行保存，失败给出具体原因 */
+  function testSftpConn() {
+    syncSftpDraft();
+    var err = sftpTestNow();
+    drawerState.sftpTested = !err;
+    drawerState.sftpTestError = err;
+    refreshSftpGate();
+    toast(t(err ? 'sftpTestFail' : 'sftpTestPass'), err ? 'info' : 'ok');
+  }
+  function openSftpDeleteModal() {
+    /* 连接仍被用途场景引用时拒绝删除：先停用，再删除（FR-3RD-002） */
+    if (SFTP.enabled) {
+      openConfirmModal({
+        title: t('sftpDeleteBlockedTitle'),
+        bodyHTML: '<p>' + tf('sftpDeleteBlockedBody', { ref: t('sftpRefBackup') }) + '</p>',
+        confirmText: t('btnGotIt'),
+        hideCancel: true
+      });
+      return;
+    }
+    openConfirmModal({
+      title: t('sftpDeleteTitle'),
+      bodyHTML: '<p>' + t('sftpDeleteBody') + '</p>' +
+        '<p class="f-hint">' + t('sftpDeleteHint') + '</p>',
+      confirmText: t('ruleDelete'),
+      danger: true,
+      onConfirm: function () {
+        SFTP.configured = false;
+        SFTP.enabled = false;
+        SFTP.host = ''; SFTP.port = ''; SFTP.user = ''; SFTP.path = '';
+        SFTP.testedAt = '';
+        syncProtoSftp();
+        renderIntegrationPage();
+        toast(t('toastSftpDeleted'), 'ok');
+      }
+    });
+  }
+
+  /* ---------- CA 服务器接入：接入 / 修改抽屉 ---------- */
+  function openCaDrawer() {
+    var draft = CA.configured
+      ? { host: CA.host, port: CA.port, path: CA.path, renewDays: String(CA.renewDays), keyPwd: '' }
+      : { host: '', port: '', path: '', renewDays: '30', keyPwd: '' };
+    openDrawer('caedit', null, {
+      ca: draft, titleKey: CA.configured ? 'caEditTitle' : 'caCreateTitle',
+      /* 已上传过时把文件名带进上传栏，便于「修改」时看到当前文件 */
+      certFiles: CA.configured ? {
+        cert: { name: CA.files.cert.name, size: CA.files.cert.size },
+        ca:   { name: CA.files.ca.name,   size: CA.files.ca.size },
+        key:  { name: CA.files.key.name,  size: CA.files.key.size }
+      } : {}
+    });
+  }
+  function openCaDeleteModal() {
+    openConfirmModal({
+      title: t('caDeleteTitle'),
+      bodyHTML: '<p>' + t('caDeleteBody') + '</p>' +
+        '<p class="f-hint">' + t('caDeleteHint') + '</p>',
+      confirmText: t('ruleDelete'),
+      danger: true,
+      onConfirm: function () {
+        CA.configured = false;
+        CA.host = ''; CA.port = ''; CA.path = ''; CA.files = {};
+        renderIntegrationPage();
+        toast(t('toastCaDeleted'), 'ok');
+      }
+    });
+  }
+
   /* ===================== 系统备份（M10 备份恢复） =====================
      页面展示备份配置（备份计划 / 备份副本数量上限 / 远程备份）与备份组件，
      组件下方提供「立即备份」与「修改」两个入口；计划与组件配置见修改抽屉。 */
@@ -4476,15 +5270,6 @@
     { id: 'thu', key: 'wdThu' }, { id: 'fri', key: 'wdFri' }, { id: 'sat', key: 'wdSat' },
     { id: 'sun', key: 'wdSun' }
   ];
-
-  /* 远程备份不在本页配置：直接取「第三方接入」中已配置的 SFTP 连接（全局唯一，M14） */
-  var SFTP = {
-    configured: true,                 // 由「第三方接入」页面配置，本页只读取
-    host: '192.168.1.100', port: '22', user: 'omsbackup', path: '/data/backup'
-  };
-  function sftpEndpoint() {
-    return (SFTP.user ? SFTP.user + '@' : '') + SFTP.host + ':' + SFTP.port + ' ' + SFTP.path;
-  }
 
   var BAK = {
     planOn: true,
@@ -4540,11 +5325,12 @@
         '<div class="des-row"><dt>' + t('bakCopiesLimit') + '</dt><dd>' +
           esc(fmtCopies(BAK.copies)) + '</dd></div>' +
         '<div class="des-row"><dt>' + t('bakRemote') + '</dt><dd>' +
-          '<span class="badge ' + (SFTP.configured ? 'badge-ok' : 'badge-plain') + '">' +
-            (SFTP.configured ? t('swOn') : t('swOff')) + '</span>' +
-          (SFTP.configured
+          '<span class="badge ' + (sftpReady() ? 'badge-ok' : 'badge-plain') + '">' +
+            (sftpReady() ? t('swOn') : t('swOff')) + '</span>' +
+          (sftpReady()
             ? ' <span class="des-mono">' + esc(sftpEndpoint()) + '</span>'
-            : ' <span class="cell-empty">' + t('bakRemoteNone') + '</span>') +
+            : ' <span class="cell-empty">' + t(SFTP.configured ? 'bakRemoteOff' : 'bakRemoteNone') +
+              '</span>') +
         '</dd></div>' +
       '</section>' +
 
@@ -6254,6 +7040,9 @@
       bakTime: null, bakCopies: null,
       ugId: null, rgId: null,   // 用户组 / 资源组：当前操作的组 id
       rule: null,               // 告警设置：屏蔽规则草稿
+      /* 第三方接入（M14）：SNMP 通道草稿 / SFTP 连接草稿 / CA 服务器草稿 */
+      snmp: null, sftp: null, ca: null,
+      sftpTested: false, sftpTestError: '',
       titleKey: null,           // 覆盖抽屉标题（创建 / 修改共用同一模式时使用）
       blockAlarm: null,         // 告警屏蔽：来源告警
       blkScope: null, blkName: null, blkDesc: null,
@@ -6305,7 +7094,15 @@
 
     /* 告警设置（M17）：创建 / 修改屏蔽规则 */
     ruleedit:   { title: 'ruleCreateTitle', sub: 'ruleEditSub',   submit: 'blkSave',
-                  note: 'ruleNote', wide: true }
+                  note: 'ruleNote', wide: true },
+
+    /* 第三方接入（M14）：SNMP 通道 / SFTP 连接 / CA 服务器 */
+    snmpedit:   { title: 'snmpCreateTitle', sub: 'snmpEditSub', submit: 'btnSave',
+                  note: 'snmpNote', wide: true },
+    sftpedit:   { title: 'sftpCreateTitle', sub: 'sftpEditSub', submit: 'btnSave',
+                  note: 'sftpFormNote', wide: true, extra: 'sftpTestConn' },
+    caedit:     { title: 'caCreateTitle', sub: 'caEditSub', submit: 'btnSave',
+                  note: 'caFormNote', wide: true }
   };
 
   function openDrawer(mode, account, seed) {
@@ -6480,6 +7277,120 @@
                fField('csrOU', 'csrOrgUnit',    { value: '' }) +
                fField('csrCN', 'csrCommonName', { value: currentHost(), hint: 'csrCommonNameHint' }) +
              '</div>';
+    }
+
+    /* ---------- 第三方接入（M14）：SNMP 接入创建 / 修改 ---------- */
+    if (drawerState.mode === 'snmpedit') {
+      var sd = drawerState.snmp || {};
+      var isV3 = sd.version === 'v3';
+      var verOpts = SNMP_VERSIONS.map(function (v) {
+        return '<option value="' + v.id + '"' + (v.id === sd.version ? ' selected' : '') + '>' +
+          t(v.key) + '</option>';
+      }).join('');
+      return (sd.id
+          ? '<div class="f-field" data-field="snmpEngineId">' +
+              '<label class="f-label">' + t('snmpEngineId') + '</label>' +
+              '<div class="f-readonly des-mono">' + esc(sd.engineId) + '</div>' +
+              '<p class="f-hint">' + t('snmpEngineIdHint') + '</p>' +
+            '</div>'
+          : '') +
+        fField('snmpName', 'snmpColName', { required: true, ph: t('snmpNamePh'), value: sd.name }) +
+        fField('snmpVersion', 'snmpVersion', { required: true, type: 'select', options: verOpts,
+               hint: 'snmpVersionHint' }) +
+        '<div class="f-field" data-field="snmpVerify">' +
+          '<label class="f-label">' + t('snmpVerify') + '</label>' +
+          switchHTML('snmpVerifySw', !!sd.verify, sd.verify ? 'swOn' : 'swOff') +
+          '<p class="f-hint">' + t('snmpVerifyHint') + '</p>' +
+        '</div>' +
+        '<div class="f-grid2">' +
+          fField('snmpIp', 'intColIp', { required: true, ph: t('intIpPh'), value: sd.ip,
+                 hint: 'intIpHint' }) +
+          fField('snmpPort', 'intColPort', { required: true, value: sd.port, hint: 'snmpPortHint' }) +
+        '</div>' +
+        (isV3
+          ? fField('snmpUser', 'snmpUser', { required: true, ph: t('snmpUserPh'), value: sd.user }) +
+            '<div class="f-grid2">' +
+              fField('snmpAuthAlg', 'snmpAuthAlg', { required: true, type: 'select',
+                     options: selectOptions(SNMP_AUTH_ALGS, sd.authAlg) }) +
+              fField('snmpPrivAlg', 'snmpPrivAlg', { required: true, type: 'select',
+                     options: selectOptions(SNMP_PRIV_ALGS, sd.privAlg) }) +
+            '</div>' +
+            '<div class="f-field" data-field="snmpPwdCheck">' +
+              '<label class="f-label">' + t('snmpPwdCheck') + '</label>' +
+              switchHTML('snmpPwdCheckSw', !!sd.pwdCheck, sd.pwdCheck ? 'swOn' : 'swOff') +
+              '<p class="f-hint">' + t('snmpPwdCheckHint') + '</p>' +
+            '</div>' +
+            '<div class="f-grid2">' +
+              fField('snmpAuthPwd', 'snmpAuthPwd', { required: !sd.id, type: 'password',
+                     ph: t(sd.id ? 'pwdKeepPh' : 'snmpAuthPwdPh') }) +
+              fField('snmpAuthPwd2', 'snmpAuthPwd2', { required: !sd.id, type: 'password',
+                     ph: t('phPassword2') }) +
+            '</div>' +
+            '<div class="f-grid2">' +
+              fField('snmpPrivPwd', 'snmpPrivPwd', { required: !sd.id, type: 'password',
+                     ph: t(sd.id ? 'pwdKeepPh' : 'snmpPrivPwdPh') }) +
+              fField('snmpPrivPwd2', 'snmpPrivPwd2', { required: !sd.id, type: 'password',
+                     ph: t('phPassword2') }) +
+            '</div>'
+          : '<p class="f-hint">' + t('snmpV2cHint') + '</p>') +
+        fField('snmpLang', 'snmpLang', { required: true, type: 'select',
+               options: selectOptions(SNMP_LANGS, sd.lang) }) +
+        '<div class="f-field" data-field="snmpReport">' +
+          '<label class="f-label">' + t('snmpReportType') + '</label>' +
+          SNMP_REPORT_TYPES.map(function (rt) {
+            var on = (sd.report || []).indexOf(rt.id) !== -1;
+            return '<label class="radio-item' + (on ? ' is-on' : '') + '">' +
+              '<input type="checkbox" class="radio-input" data-report="' + esc(rt.id) + '"' +
+                (on ? ' checked' : '') + ' /><span>' + t(rt.key) + '</span></label>';
+          }).join('') +
+          '<p class="f-hint">' + t('snmpReportHint') + '</p>' +
+        '</div>' +
+        fField('snmpDesc', 'blkDesc', { required: true, type: 'textarea', ph: t('snmpDescPh'),
+               value: sd.desc });
+    }
+
+    /* ---------- 第三方接入（M14）：SFTP 接入配置 / 修改（全局唯一） ---------- */
+    if (drawerState.mode === 'sftpedit') {
+      var sf = drawerState.sftp || {};
+      return '<p class="f-hint">' + t('sftpFormHint') + '</p>' +
+        '<div class="f-grid2">' +
+          fField('sftpIp', 'intColIp', { required: true, ph: t('intIpPh'), value: sf.host,
+                 hint: 'intIpHint' }) +
+          fField('sftpPort', 'intColPort', { required: true, value: sf.port, hint: 'sftpPortHint' }) +
+        '</div>' +
+        fField('sftpUser', 'intColUser', { required: true, ph: t('sftpUserPh'), value: sf.user }) +
+        fField('sftpPwd', 'intColPwd', { required: !SFTP.configured, type: 'password',
+               ph: t(SFTP.configured ? 'pwdKeepPh' : 'sftpPwdPh'), hint: 'sftpPwdHint' }) +
+        fField('sftpPath', 'intColPath', { required: true, ph: t('sftpPathPh'), value: sf.path,
+               hint: 'sftpPathHint' }) +
+        '<div class="f-field" data-field="sftpTested">' +
+          '<p class="f-hint' + (drawerState.sftpTested ? ' is-ok-msg'
+                                : (drawerState.sftpTestError ? ' is-bad-msg' : '')) +
+            '" id="sftpTestMsg">' + esc(sftpTestMsgText()) + '</p>' +
+          '<p class="f-error"></p>' +
+        '</div>';
+    }
+
+    /* ---------- 第三方接入（M14）：CA 服务器接入 / 修改（全局唯一） ---------- */
+    if (drawerState.mode === 'caedit') {
+      var ca = drawerState.ca || {};
+      return '<div class="f-section">' + t('caSecBase') + '</div>' +
+        fField('caIp', 'intColIp', { required: true, ph: t('caIpPh'), value: ca.host,
+               hint: 'caIpHint' }) +
+        '<div class="f-grid2">' +
+          fField('caPort', 'intColPort', { required: true, value: ca.port, hint: 'caPortHint' }) +
+          fField('caRenewDays', 'caRenewDays', { required: true, value: ca.renewDays,
+                 hint: 'caRenewDaysHint' }) +
+        '</div>' +
+        fField('caPath', 'intColPath', { required: true, ph: t('caPathPh'), value: ca.path,
+               hint: 'caPathHint' }) +
+        '<div class="f-section">' + t('caSecFiles') + '</div>' +
+        '<p class="f-hint">' + t('caFilesHint') + '</p>' +
+        upField('cert', 'caFileCert', { required: true }) +
+        upField('ca', 'caFileCa', { required: true }) +
+        upField('key', 'caFileKey', { required: true }) +
+        fField('caKeyPwd', 'caKeyPwd', { required: !CA.configured, type: 'password',
+               ph: t(CA.configured ? 'pwdKeepPh' : 'caKeyPwdPh'), hint: 'caKeyPwdHint' });
     }
 
     if (drawerState.mode === 'ugcreate' || drawerState.mode === 'rgcreate' ||
@@ -6749,9 +7660,9 @@
           '</div>' +
           '<div class="f-field" data-field="bakRemote">' +
             '<label class="f-label">' + t('bakRemoteLabel') + '</label>' +
-            '<div class="f-readonly">' + (SFTP.configured
+            '<div class="f-readonly">' + (sftpReady()
               ? '<span class="des-mono">' + esc(sftpEndpoint()) + '</span>'
-              : t('bakRemoteNone')) + '</div>' +
+              : t(SFTP.configured ? 'bakRemoteOff' : 'bakRemoteNone')) + '</div>' +
             '<p class="f-hint">' + t('bakRemoteSourceHint') + '</p>' +
           '</div>' +
           '<div class="f-field" data-field="bakComps">' +
@@ -6826,8 +7737,19 @@
     $('drawerBody').innerHTML = drawerBodyHTML();
     bindDrawer();
 
+    /* 抽屉底部的第三个按钮（当前仅 SFTP 的「测试连接」用） */
+    var extra = $('drawerExtra');
+    if (cfg.extra) {
+      extra.hidden = false;
+      extra.textContent = t(cfg.extra);
+    } else {
+      extra.hidden = true;
+    }
+
     if (drawerState.mode === 'import') {
       syncDropzoneActions();
+    } else if (drawerState.mode === 'sftpedit') {
+      refreshSftpGate();                    // 测试连通性通过后才允许保存（FR-3RD-002）
     } else {
       $('drawerSubmit').disabled = false;   // 清掉导入模式残留的禁用态
     }
@@ -7095,7 +8017,58 @@
       return;
     }
 
-    if (drawerState.mode === 'certimport') {
+    /* ---------- 第三方接入（M14）：SNMP 通道 / SFTP 连接 ---------- */
+    if (drawerState.mode === 'snmpedit') {
+      var vsel = $('snmpVersion');
+      if (vsel) {
+        vsel.addEventListener('change', function () {
+          syncSnmpDraft();                  // 切换版本要重绘（仅 v3 有认证与加密配置）
+          drawerState.snmp.version = vsel.value;
+          renderDrawer();
+        });
+      }
+      var vsw = $('snmpVerifySw');
+      if (vsw) {
+        vsw.addEventListener('click', function () {
+          var on = !vsw.classList.contains('is-on');
+          vsw.classList.toggle('is-on', on);
+          vsw.setAttribute('aria-checked', String(on));
+          vsw.querySelector('.switch-label').textContent = t(on ? 'swOn' : 'swOff');
+          drawerState.snmp.verify = on;
+        });
+      }
+      var psw = $('snmpPwdCheckSw');
+      if (psw) {
+        psw.addEventListener('click', function () {
+          var on = !psw.classList.contains('is-on');
+          psw.classList.toggle('is-on', on);
+          psw.setAttribute('aria-checked', String(on));
+          psw.querySelector('.switch-label').textContent = t(on ? 'swOn' : 'swOff');
+          drawerState.snmp.pwdCheck = on;
+        });
+      }
+      $('drawerBody').querySelectorAll('[data-report]').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+          cb.closest('.radio-item').classList.toggle('is-on', cb.checked);
+        });
+      });
+      return;
+    }
+    if (drawerState.mode === 'sftpedit') {
+      /* 任一字段改动后都需重新测试：清掉测试结果，并按测试状态控制保存按钮 */
+      $('drawerBody').querySelectorAll('.f-input').forEach(function (el) {
+        el.addEventListener('input', function () {
+          if (drawerState.sftpTested || drawerState.sftpTestError) {
+            drawerState.sftpTested = false;
+            drawerState.sftpTestError = '';
+            refreshSftpGate();
+          }
+        });
+      });
+      return;
+    }
+
+    if (drawerState.mode === 'certimport' || drawerState.mode === 'caedit') {
       $('drawerBody').querySelectorAll('[data-pick]').forEach(function (btn) {
         var kind = btn.getAttribute('data-pick');
         var input = $('file-' + kind);
@@ -7110,7 +8083,7 @@
           clearFieldError('up-' + kind);
         });
       });
-      return;
+      if (drawerState.mode === 'certimport') return;   // caedit 无其他绑定，继续往下走会直接返回
     }
 
     if (drawerState.mode !== 'import') return;
@@ -7293,6 +8266,61 @@
       if (!drawerState.certFiles.cert) e['up-cert'] = 'errCertFile';
       if (!drawerState.certFiles.ca) e['up-ca'] = 'errCaFile';
     }
+    if (m === 'snmpedit') {
+      var sn = drawerState.snmp;
+      if (!val('snmpName')) e.snmpName = 'errRequired';
+      var spv = val('snmpPort');
+      if (!spv) e.snmpPort = 'errRequired';
+      else if (!portOk(spv)) e.snmpPort = 'errSnmpPort';
+      var sip = val('snmpIp');
+      if (!sip) e.snmpIp = 'errRequired';
+      else if (!ipOk(sip)) e.snmpIp = 'errIpFormat';
+      if (sn.version === 'v3') {
+        if (!val('snmpUser')) e.snmpUser = 'errRequired';
+        var a1 = val('snmpAuthPwd'), a2 = val('snmpAuthPwd2');
+        var p1 = val('snmpPrivPwd'), p2 = val('snmpPrivPwd2');
+        if (!sn.id || a1) {                       // 修改时留空表示不修改凭据
+          if (!a1) e.snmpAuthPwd = 'errRequired';
+          else if (sn.pwdCheck && !passwordOk(a1)) e.snmpAuthPwd = 'errPwdPolicy';
+          if (!a2) e.snmpAuthPwd2 = 'errRequired';
+          else if (a2 !== a1) e.snmpAuthPwd2 = 'errPwdMismatch';
+        }
+        if (!sn.id || p1) {
+          if (!p1) e.snmpPrivPwd = 'errRequired';
+          else if (sn.pwdCheck && !passwordOk(p1)) e.snmpPrivPwd = 'errPwdPolicy';
+          if (!p2) e.snmpPrivPwd2 = 'errRequired';
+          else if (p2 !== p1) e.snmpPrivPwd2 = 'errPwdMismatch';
+        }
+      }
+      if (!val('snmpDesc')) e.snmpDesc = 'errRequired';
+    }
+    if (m === 'sftpedit') {
+      var sf = drawerState.sftp;
+      if (!sf.host) e.sftpIp = 'errRequired';
+      else if (!ipOk(sf.host)) e.sftpIp = 'errIpFormat';
+      if (!sf.port) e.sftpPort = 'errRequired';
+      else if (!portOk(sf.port)) e.sftpPort = 'errSnmpPort';
+      if (!sf.user) e.sftpUser = 'errRequired';
+      if (!sf.path) e.sftpPath = 'errRequired';
+      if (!SFTP.configured && !sf.pwd) e.sftpPwd = 'errRequired';
+      if (!drawerState.sftpTested) e.sftpTested = 'sftpNeedTest';
+    }
+    if (m === 'caedit') {
+      var cv = val('caIp');
+      if (!cv) e.caIp = 'errRequired';
+      else if (!ipv4Ok(cv)) e.caIp = ipv6Ok(cv) ? 'errIpv4Only' : 'errIpFormat';
+      var cpv = val('caPort');
+      if (!cpv) e.caPort = 'errRequired';
+      else if (!portOk(cpv)) e.caPort = 'errSnmpPort';
+      var crv = val('caRenewDays'), crn = Number(crv);
+      if (crv === '' || isNaN(crn) || String(crn) !== crv) e.caRenewDays = 'errCaRenewDays';
+      else if (crn < 7 || crn > 180) e.caRenewDays = 'errCaRenewDays';
+      if (!val('caPath')) e.caPath = 'errRequired';
+      if (!drawerState.certFiles.cert) e['up-cert'] = 'errCertFile';
+      if (!drawerState.certFiles.ca) e['up-ca'] = 'errCaFile';
+      if (!drawerState.certFiles.key) e['up-key'] = 'errKeyFile';
+      if (!CA.configured && !val('caKeyPwd')) e.caKeyPwd = 'errRequired';
+    }
     drawerState.errors = e;
     if (Object.keys(e).length) { showErrors(); return false; }
     return true;
@@ -7306,6 +8334,68 @@
     if (DRAWER_CFG[m] && DRAWER_CFG[m].readonly) { closeDrawer(); return; }
 
     if (!validateDrawer()) return;
+
+    /* ---------- 第三方接入（M14） ---------- */
+    if (m === 'snmpedit') {
+      syncSnmpDraft();
+      var sd = drawerState.snmp;
+      // 开启「连通性校验」时做一次模拟校验；不通过则不允许启用（保存后置为停用，FR-3RD-001）
+      var bad = sd.verify && UNREACHABLE_HOSTS.indexOf(sd.ip) !== -1;
+      var rec = sd.id ? snmpById(sd.id) : null;
+      if (rec) {
+        rec.name = sd.name; rec.version = sd.version; rec.verify = sd.verify;
+        rec.port = sd.port; rec.ip = sd.ip; rec.user = sd.user;
+        rec.authAlg = sd.version === 'v3' ? sd.authAlg : '';
+        rec.privAlg = sd.version === 'v3' ? sd.privAlg : '';
+        rec.pwdCheck = sd.pwdCheck; rec.lang = sd.lang; rec.report = sd.report.slice();
+        rec.desc = sd.desc;
+      } else {
+        rec = {
+          id: 'snmp-' + Date.now(), name: sd.name, version: sd.version, verify: sd.verify,
+          port: sd.port, ip: sd.ip, user: sd.user,
+          authAlg: sd.version === 'v3' ? sd.authAlg : '',
+          privAlg: sd.version === 'v3' ? sd.privAlg : '',
+          pwdCheck: sd.pwdCheck, lang: sd.lang, report: sd.report.slice(), desc: sd.desc,
+          engineId: genEngineId(), enabled: true
+        };
+        SNMP_LIST.push(rec);
+      }
+      if (bad) rec.enabled = false;
+      closeDrawer();
+      renderIntegrationPage();
+      toast(t(bad ? 'toastSnmpUnreachable' : (sd.id ? 'toastSnmpSaved' : 'toastSnmpCreated')),
+            bad ? 'info' : 'ok');
+      return;
+    }
+    if (m === 'sftpedit') {
+      syncSftpDraft();
+      var sfd = drawerState.sftp;
+      var wasConfigured = SFTP.configured;
+      SFTP.configured = true;
+      SFTP.enabled = true;
+      SFTP.host = sfd.host; SFTP.port = sfd.port; SFTP.user = sfd.user; SFTP.path = sfd.path;
+      SFTP.testedAt = fmtDateTimeSec(new Date());
+      syncProtoSftp();
+      closeDrawer();
+      renderIntegrationPage();
+      toast(t(wasConfigured ? 'toastSftpSaved' : 'toastSftpCreated'), 'ok');
+      return;
+    }
+    if (m === 'caedit') {
+      var wasCa = CA.configured;
+      CA.configured = true;
+      CA.host = val('caIp'); CA.port = val('caPort'); CA.path = val('caPath');
+      CA.renewDays = Number(val('caRenewDays'));
+      CA.files = {};
+      ['cert', 'ca', 'key'].forEach(function (k) {
+        if (drawerState.certFiles[k]) CA.files[k] = drawerState.certFiles[k];
+      });
+      CA.updatedAt = fmtDateTimeSec(new Date());
+      closeDrawer();
+      renderIntegrationPage();
+      toast(t(wasCa ? 'toastCaSaved' : 'toastCaCreated'), 'ok');
+      return;
+    }
 
     if (m === 'ugedit' || m === 'rgedit') {
       var isUe = m === 'ugedit';
@@ -7675,6 +8765,13 @@
       return;
     }
 
+    /* 无权访问的设置子页统一回落到首页（菜单也不可见）；同步 hash 便于直达时 URL 一致 */
+    var requested = SETTINGS_CHILDREN.filter(function (c) { return c.route === state.route; })[0];
+    if (requested && !allowed(requested.id)) {
+      state.route = '#/home';
+      if (location.hash !== '#/home') location.hash = '#/home';
+    }
+
     if (state.route === '#/home') {
       content.innerHTML =
         '<div class="page-head">' +
@@ -7766,6 +8863,11 @@
 
     if (state.route === '#/settings/cert' && allowed('cert')) {
       renderCertPage();
+      return;
+    }
+
+    if (state.route === '#/settings/integration' && allowed('integration')) {
+      renderIntegrationPage();
       return;
     }
 
@@ -7872,6 +8974,10 @@
   $('drawerCancel').addEventListener('click', closeDrawer);
   $('drawerMask').addEventListener('click', closeDrawer);
   $('drawerSubmit').addEventListener('click', submitDrawer);
+  /* 抽屉底部第三个按钮：目前只有 SFTP 的「测试连接」用到 */
+  $('drawerExtra').addEventListener('click', function () {
+    if (drawerState.mode === 'sftpedit') testSftpConn();
+  });
   $('modalCancel').addEventListener('click', closeModal);
   $('modalMask').addEventListener('click', function (e) {
     if (e.target === $('modalMask')) closeModal();

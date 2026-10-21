@@ -2949,6 +2949,468 @@ def main():
         s.click('.lang-btn[data-lang="zh-CN"]')
         s.nav(PAGE)                       # 恢复内存数据，避免影响后续用例
 
+        # ---------- 12.13 第三方接入页（M14 FR-3RD-001/002/003） ----------
+        print("\n[12.13] 第三方接入页（M14）")
+        s.go("#/settings/integration")
+        check("页面标题=第三方接入",
+              s.js("return document.querySelector('.page-title').innerText.trim()") == "第三方接入")
+        check("面包屑为「设置 / 第三方接入」",
+              s.texts("#crumb .crumb-item") == ["设置", "第三方接入"],
+              str(s.texts("#crumb .crumb-item")))
+        heads = s.js("""return Array.from(document.querySelectorAll('.des-head')).map(function(e){
+            return e.innerText.trim().split('\\n')[0];});""")
+        check("页面三块：SNMP 接入配置 / SFTP 配置 / CA 服务器配置",
+              heads == ["SNMP 接入配置", "SFTP 配置", "CA 服务器配置"], str(heads))
+
+        # --- SNMP 接入：列表 ---
+        snmpheads = s.texts("table.data thead th")
+        check("SNMP 表头 8 列且顺序一致",
+              snmpheads == ["名称", "SNMP版本", "IP地址", "端口", "上报数据类型",
+                            "引擎ID", "状态", "操作"], str(snmpheads))
+        check("默认 2 条 SNMP 通道，含 SNMPv3 与 SNMPv2c 两种版本",
+              s.js("return document.querySelectorAll('table.data tbody tr').length") == 2
+              and "SNMPv3" in s.js("return document.querySelector('table.data tbody').innerText")
+              and "SNMPv2c" in s.js("return document.querySelector('table.data tbody').innerText"))
+        check("列表展示引擎ID（等宽字体、超长省略）",
+              s.js("""var e=document.querySelector('table.data tbody .cell-engine');
+                      return e && e.innerText.indexOf('0x')===0
+                          && e.getBoundingClientRect().width <= 200;"""),
+              s.js("return (document.querySelector('.cell-engine')||{}).innerText"))
+        check("上报数据类型：勾选告警的通道显示「告警」，未勾选的显示占位符",
+              s.js("""var rows=Array.from(document.querySelectorAll('table.data tbody tr'));
+                      return rows[0].innerText.indexOf('告警')>=0
+                          && rows[1].children[4].innerText.trim()==='—';"""))
+        check("状态列用启用/禁用徽标，行操作为 修改 / 启用|禁用 / 删除",
+              s.js("""return document.querySelectorAll('table.data tbody tr')[0]
+                        .querySelector('.badge').innerText.trim();""") == "启用"
+              and set(s.texts("table.data tbody .row-actions .link-btn"))
+                  == {"修改", "禁用", "启用", "删除"},
+              str(set(s.texts("table.data tbody .row-actions .link-btn"))))
+        check("SNMP 表格不横向溢出",
+              s.js("""var sc=document.querySelector('.table-scroll');
+                      return sc.scrollWidth<=sc.clientWidth;"""),
+              s.js("""var sc=document.querySelector('.table-scroll');
+                      return 'scroll '+sc.scrollWidth+'/'+sc.clientWidth;"""))
+        check("页脚说明上报方式固定为 SNMP Trap、通道独立生效",
+              "SNMP Trap" in s.js("return document.querySelector('.table-foot').innerText"))
+        check("页面头部给出「创建SNMP接入」入口（可创建多条）",
+              s.js("return document.getElementById('btnSnmpCreate').innerText.trim();") == "创建SNMP接入")
+        s.shot("83-integration-page.png")
+
+        # --- SNMP 接入：创建抽屉 ---
+        s.click("#btnSnmpCreate"); time.sleep(0.5)
+        check("创建抽屉标题=创建SNMP接入",
+              s.js("return document.getElementById('drawerTitle').innerText.trim();") == "创建SNMP接入")
+        check("创建时没有「引擎ID」字段（创建后才生成）",
+              not s.js("return !!document.querySelector('[data-field=\"snmpEngineId\"]')"))
+        check("端口默认为 162",
+              s.js("return document.getElementById('snmpPort').value") == "162")
+        check("SNMPv3 表单含全部字段（名称/版本/连通性校验/端口/IP/安全用户名/鉴权算法/复杂度校验/鉴权密码×2/加密算法/数据加密密码×2/语言/上报数据类型/描述）",
+              s.js("return document.querySelectorAll('#drawerBody .f-field').length") == 16,
+              str(s.js("return document.querySelectorAll('#drawerBody .f-field').length;")))
+        check("鉴权算法选项为 SHA-512/SHA-384/SHA-256/SHA/MD5",
+              s.js("""return Array.from(document.getElementById('snmpAuthAlg').options)
+                        .map(function(o){return o.value;}).join(',');""")
+              == "SHA-512,SHA-384,SHA-256,SHA,MD5")
+        check("加密算法选项为 AES-256/AES-128/DES",
+              s.js("""return Array.from(document.getElementById('snmpPrivAlg').options)
+                        .map(function(o){return o.value;}).join(',');""")
+              == "AES-256,AES-128,DES")
+        check("语言选项为 中文 / 英语，默认中文",
+              s.js("""return Array.from(document.getElementById('snmpLang').options)
+                        .map(function(o){return o.innerText;}).join(',');""") == "中文,英语"
+              and s.js("return document.getElementById('snmpLang').value") == "zh-CN")
+        check("上报数据类型当前只有「告警」可勾选，且默认勾选",
+              s.js("return document.querySelectorAll('[data-report]').length") == 1
+              and s.js("return document.querySelector('[data-report]').checked")
+              and "告警" in s.js("return document.querySelector('[data-field=\"snmpReport\"]').innerText"))
+        s.shot("84-snmp-create-drawer.png")
+        # 版本切换：SNMPv2c 不需要认证与加密配置
+        s.js("""var sel=document.getElementById('snmpVersion');sel.value='v2c';
+                sel.dispatchEvent(new Event('change',{bubbles:true}));""")
+        time.sleep(0.5)
+        check("切到 SNMPv2c 后隐藏认证与加密相关字段（只剩 8 项）",
+              s.js("return document.querySelectorAll('#drawerBody .f-field').length") == 8
+              and not s.js("return !!document.getElementById('snmpUser')")
+              and not s.js("return !!document.getElementById('snmpAuthPwd')")
+              and not s.js("return !!document.getElementById('snmpPrivPwd')")
+              and "不需要认证与加密配置" in
+                  s.js("return document.querySelector('#drawerBody').innerText"),
+              str(s.js("return document.querySelectorAll('#drawerBody .f-field').length;")))
+        s.shot("85-snmp-v2c.png")
+        s.js("""var sel=document.getElementById('snmpVersion');sel.value='v3';
+                sel.dispatchEvent(new Event('change',{bubbles:true}));""")
+        time.sleep(0.5)
+        check("切回 SNMPv3 后认证与加密字段重新出现",
+              s.js("return document.querySelectorAll('#drawerBody .f-field').length") == 16)
+        # 空表单校验
+        s.click("#drawerSubmit"); time.sleep(0.4)
+        bad = s.js("""return Array.from(document.querySelectorAll('#drawerBody .f-field.has-error'))
+                        .map(function(e){return e.getAttribute('data-field');});""")
+        check("必填校验：名称 / IP / 安全用户名 / 鉴权密码×2 / 数据加密密码×2 / 描述",
+              bad == ["snmpName", "snmpIp", "snmpUser", "snmpAuthPwd", "snmpAuthPwd2",
+                      "snmpPrivPwd", "snmpPrivPwd2", "snmpDesc"], str(bad))
+        # 地址与端口格式
+        s.js("""function sv(id,v){var e=document.getElementById(id);e.value=v;
+                  e.dispatchEvent(new Event('input',{bubbles:true}));}
+                sv('snmpIp','999.1.1.1');sv('snmpPort','70000');""")
+        time.sleep(0.3)
+        s.click("#drawerSubmit"); time.sleep(0.4)
+        check("IP 与端口格式非法时给出格式提示",
+              s.js("""return document.querySelector('[data-field="snmpIp"] .f-error').innerText;""")
+                  == "地址格式不正确，请填写合法的 IPv4 或 IPv6 地址"
+              and s.js("""return document.querySelector('[data-field="snmpPort"] .f-error').innerText;""")
+                  == "端口需为 1-65535 的整数")
+        # IPv6 合法
+        s.js("""function sv2(id,v){var e=document.getElementById(id);e.value=v;
+                  e.dispatchEvent(new Event('input',{bubbles:true}));}
+                sv2('snmpIp','2001:db8:ac10::31');sv2('snmpPort','162');""")
+        time.sleep(0.3)
+        s.click("#drawerSubmit"); time.sleep(0.4)
+        check("IPv6 地址被接受（IP 字段不再报错）",
+              not s.js("""return document.querySelector('[data-field="snmpIp"]')
+                            .classList.contains('has-error');"""))
+        # 密码复杂度与一致性
+        s.js("""function sv3(id,v){var e=document.getElementById(id);e.value=v;
+                  e.dispatchEvent(new Event('input',{bubbles:true}));}
+                sv3('snmpName','探针通道');sv3('snmpUser','oms_probe');
+                sv3('snmpAuthPwd','abc');sv3('snmpAuthPwd2','abcd');""")
+        time.sleep(0.3)
+        s.click("#drawerSubmit"); time.sleep(0.4)
+        check("开启复杂度校验时弱密码被拒（至少 8 位、至少三类字符）",
+              "复杂度" in s.js("""return document.querySelector('[data-field="snmpAuthPwd"] .f-error').innerText;"""),
+              s.js("""return document.querySelector('[data-field="snmpAuthPwd"] .f-error').innerText;"""))
+        s.js("""function sv4(id,v){var e=document.getElementById(id);e.value=v;
+                  e.dispatchEvent(new Event('input',{bubbles:true}));}
+                sv4('snmpAuthPwd','Abcd@1234');""")
+        time.sleep(0.3)
+        s.click("#drawerSubmit"); time.sleep(0.4)
+        check("两次鉴权密码不一致时提示不一致",
+              s.js("""return document.querySelector('[data-field="snmpAuthPwd2"] .f-error').innerText;""")
+                  == "两次输入的密码不一致")
+        # 关闭复杂度校验后弱密码可保存
+        s.click("#snmpPwdCheckSw"); time.sleep(0.3)
+        s.js("""function sv5(id,v){var e=document.getElementById(id);e.value=v;
+                  e.dispatchEvent(new Event('input',{bubbles:true}));}
+                sv5('snmpAuthPwd','abc');sv5('snmpAuthPwd2','abc');
+                sv5('snmpPrivPwd','abc');sv5('snmpPrivPwd2','abc');sv5('snmpDesc','原型用例：校验关闭后允许弱口令');""")
+        time.sleep(0.3)
+        s.click("#drawerSubmit"); time.sleep(0.6)
+        check("关闭复杂度校验后弱口令可以保存（通道创建成功）",
+              s.js("return document.getElementById('drawer').hidden")
+              and s.js("return document.querySelectorAll('table.data tbody tr').length;") == 3)
+        newrow = s.js("""return Array.from(document.querySelectorAll('table.data tbody tr'))
+                            .slice(-1)[0].innerText.replace(/\\n/g,' ');""")
+        check("新建通道已生成引擎ID（0x 开头的十六进制）",
+              s.js("""var e=Array.from(document.querySelectorAll('table.data tbody tr')).slice(-1)[0]
+                        .querySelector('.cell-engine').innerText;
+                      return e.indexOf('0x80001F8880')===0 && e.length===24;"""),
+              s.js("""return Array.from(document.querySelectorAll('table.data tbody tr')).slice(-1)[0]
+                        .querySelector('.cell-engine').innerText;"""))
+        check("新建通道带出名称与上报数据类型（默认勾选告警）",
+              "探针通道" in newrow and "告警" in newrow, newrow[:80])
+
+        # --- SNMP 接入：修改（表单与创建一致 + 展示引擎ID） ---
+        s.js("""Array.from(document.querySelectorAll('table.data tbody tr')).slice(-1)[0]
+                  .querySelector('[data-snmp-act="edit"]').click();""")
+        time.sleep(0.5)
+        check("修改抽屉标题=修改SNMP接入，且表单字段数与创建一致（多出只读引擎ID）",
+              s.js("return document.getElementById('drawerTitle').innerText.trim();") == "修改SNMP接入"
+              and s.js("return document.querySelectorAll('#drawerBody .f-field').length") == 17)
+        check("修改时展示系统生成的引擎ID，并说明不可修改",
+              s.js("""return (document.querySelector('[data-field="snmpEngineId"] .f-readonly')||{})
+                        .innerText||'';""").startswith("0x80001F8880")
+              and "创建后不可修改" in
+                  s.js("""return document.querySelector('[data-field="snmpEngineId"] .f-hint').innerText;"""))
+        check("修改时凭据不回显：密码框为空且提示「不修改请留空」",
+              s.js("return document.getElementById('snmpAuthPwd').value") == ""
+              and s.js("return document.getElementById('snmpAuthPwd').placeholder") == "不修改请留空")
+        s.js("""function sv6(id,v){var e=document.getElementById(id);e.value=v;
+                  e.dispatchEvent(new Event('input',{bubbles:true}));}
+                sv6('snmpName','探针通道-改名');""")
+        time.sleep(0.3)
+        s.click("#drawerSubmit"); time.sleep(0.6)
+        check("修改保存后列表同步更新（名称已改，通道数不变）",
+              s.js("return document.querySelectorAll('table.data tbody tr').length") == 3
+              and "探针通道-改名" in s.js("return document.querySelector('table.data tbody').innerText"))
+
+        # --- SNMP 接入：连通性校验失败 → 不允许启用 ---
+        s.click("#btnSnmpCreate"); time.sleep(0.5)
+        s.js("""function sv7(id,v){var e=document.getElementById(id);e.value=v;
+                  e.dispatchEvent(new Event('input',{bubbles:true}));}
+                sv7('snmpName','不可达通道');sv7('snmpIp','192.0.2.1');sv7('snmpUser','u1');
+                sv7('snmpAuthPwd','Abcd@1234');sv7('snmpAuthPwd2','Abcd@1234');
+                sv7('snmpPrivPwd','Abcd@1234');sv7('snmpPrivPwd2','Abcd@1234');
+                sv7('snmpDesc','连通性校验失败用例');""")
+        time.sleep(0.3)
+        s.click("#drawerSubmit"); time.sleep(0.6)
+        last = s.js("""return Array.from(document.querySelectorAll('table.data tbody tr'))
+                          .slice(-1)[0].innerText.replace(/\\n/g,' ');""")
+        check("开启连通性校验且目标不可达时不允许启用（保存后置为禁用）",
+              "不可达通道" in last and "禁用" in last
+              and "连通性校验未通过" in s.js("return document.getElementById('toastWrap').innerText"),
+              last[:80])
+        # 停用/启用切换
+        s.js("""Array.from(document.querySelectorAll('table.data tbody tr')).slice(-1)[0]
+                  .querySelector('[data-snmp-act="toggle"]').click();""")
+        time.sleep(0.6)
+        check("行内「启用」切换后状态变为启用",
+              "启用" in s.js("""return Array.from(document.querySelectorAll('table.data tbody tr'))
+                                    .slice(-1)[0].querySelector('.badge').innerText;"""))
+        # 删除
+        s.js("""Array.from(document.querySelectorAll('table.data tbody tr')).slice(-1)[0]
+                  .querySelector('[data-snmp-act="delete"]').click();""")
+        time.sleep(0.5)
+        check("删除 SNMP 接入有二次确认并提示影响",
+              s.js("return document.getElementById('modalTitle').innerText.trim();") == "删除 SNMP 接入"
+              and "不可达通道" in s.js("return document.getElementById('modalBody').innerText")
+              and "不再上报告警" in s.js("return document.getElementById('modalBody').innerText"))
+        s.js("document.getElementById('modalConfirm').click();"); time.sleep(0.6)
+        check("删除后通道数回到 3",
+              s.js("return document.querySelectorAll('table.data tbody tr').length") == 3)
+        s.js("""Array.from(document.querySelectorAll('table.data tbody tr')).slice(-1)[0]
+                  .querySelector('[data-snmp-act="delete"]').click();""")
+        time.sleep(0.4)
+        s.js("document.getElementById('modalConfirm').click();"); time.sleep(0.6)
+        check("清理用例数据后回到初始 2 条通道",
+              s.js("return document.querySelectorAll('table.data tbody tr').length") == 2)
+
+        # --- SFTP 接入：卡片信息 ---
+        sftpcard = s.js("""return document.querySelectorAll('.des-card')[0].innerText.replace(/\\n/g,' | ');""")
+        check("SFTP 卡片展示 IP / 端口 / 用户名 / 路径",
+              "192.168.1.100" in sftpcard and "22" in sftpcard
+              and "omsbackup" in sftpcard and "/data/backup" in sftpcard, sftpcard[:110])
+        check("SFTP 卡片展示引用方与「使用中」状态",
+              "备份恢复 · 远程备份" in sftpcard and "使用中" in sftpcard)
+        check("SFTP 卡片操作入口为 修改 / 禁用 / 删除",
+              set(s.texts(".des-card:nth-of-type(1) ~ .action-bar .btn")) >= {"修改", "禁用", "删除"}
+              or s.js("return !!document.getElementById('btnSftpEdit')")
+              and s.js("return !!document.getElementById('btnSftpToggle')")
+              and s.js("return !!document.getElementById('btnSftpDelete')"))
+
+        # --- SFTP 接入：测试连通性通过后才允许保存 ---
+        s.click("#btnSftpEdit"); time.sleep(0.5)
+        check("SFTP 抽屉底部为 测试连接 / 取消 / 保存 三个按钮（FR-3RD-002）",
+              s.js("return document.getElementById('drawerExtra').innerText.trim();") == "测试连接"
+              and not s.js("return document.getElementById('drawerExtra').hidden")
+              and s.js("return document.getElementById('drawerCancel').innerText.trim();") == "取消"
+              and s.js("return document.getElementById('drawerSubmit').innerText.trim();") == "保存")
+        check("未测试连通性时「保存」不可用并给出提示",
+              s.js("return document.getElementById('drawerSubmit').disabled")
+              and "请先「测试连接」" in s.js("return document.getElementById('sftpTestMsg').innerText"))
+        check("修改表单与创建表单一致：带出 IP / 端口 / 用户名 / 路径，密码不回显",
+              s.js("return document.getElementById('sftpIp').value") == "192.168.1.100"
+              and s.js("return document.getElementById('sftpPort').value") == "22"
+              and s.js("return document.getElementById('sftpUser').value") == "omsbackup"
+              and s.js("return document.getElementById('sftpPath').value") == "/data/backup"
+              and s.js("return document.getElementById('sftpPwd').value") == ""
+              and s.js("return document.getElementById('sftpPwd').placeholder") == "不修改请留空")
+        time.sleep(1.6)                   # 等前面的 toast 消失再出图
+        s.shot("86-sftp-test-gate.png")
+        s.click("#drawerExtra"); time.sleep(0.5)
+        check("测试连通性通过后「保存」解禁",
+              not s.js("return document.getElementById('drawerSubmit').disabled")
+              and "测试通过" in s.js("return document.getElementById('sftpTestMsg').innerText"))
+        s.js("""var e=document.getElementById('sftpPath');e.value='/data/backup-oms';
+                e.dispatchEvent(new Event('input',{bubbles:true}));""")
+        time.sleep(0.3)
+        check("改动字段后需重新测试（「保存」重新置灰）",
+              s.js("return document.getElementById('drawerSubmit').disabled")
+              and "请先「测试连接」" in s.js("return document.getElementById('sftpTestMsg').innerText"))
+        s.js("""var e=document.getElementById('sftpIp');e.value='192.0.2.1';
+                e.dispatchEvent(new Event('input',{bubbles:true}));""")
+        time.sleep(0.3)
+        s.click("#drawerExtra"); time.sleep(0.5)
+        check("连通性测试失败时给出具体原因且不允许保存",
+              "连通性测试未通过" in s.js("return document.getElementById('sftpTestMsg').innerText")
+              and "不可达" in s.js("return document.getElementById('sftpTestMsg').innerText")
+              and s.js("return document.getElementById('drawerSubmit').disabled"))
+        s.js("""var e=document.getElementById('sftpIp');e.value='192.168.1.100';
+                e.dispatchEvent(new Event('input',{bubbles:true}));""")
+        time.sleep(0.3)
+        s.click("#drawerExtra"); time.sleep(0.4)
+        s.click("#drawerSubmit"); time.sleep(0.6)
+        check("测试通过后保存成功，卡片路径与测试时间同步更新",
+              s.js("return document.getElementById('drawer').hidden")
+              and "/data/backup-oms" in
+                  s.js("return document.querySelectorAll('.des-card')[0].innerText"))
+        # 停用 → 备份页引用方随之不可用（跨页一致）
+        s.click("#btnSftpToggle"); time.sleep(0.6)
+        check("停用 SFTP 后卡片状态为禁用、引用方显示未使用",
+              "未使用" in s.js("return document.querySelectorAll('.des-card')[0].innerText"))
+        s.go("#/settings/backup")
+        check("跨页一致：备份页的远程备份随 SFTP 停用而关闭并说明原因（M10 ⇄ M14）",
+              "SFTP 接入已停用" in s.js("return document.querySelector('.des-card').innerText"))
+        s.go("#/settings/integration")
+        # 仍被引用时不允许删除
+        s.click("#btnSftpToggle"); time.sleep(0.5)      # 先启用回来
+        s.click("#btnSftpDelete"); time.sleep(0.5)
+        check("连接仍被引用时拒绝删除并提示先停用（FR-3RD-002）",
+              s.js("return document.getElementById('modalTitle').innerText.trim();") == "无法删除 SFTP 接入"
+              and "备份恢复 · 远程备份" in s.js("return document.getElementById('modalBody').innerText")
+              and s.js("return document.getElementById('modalCancel').hidden;"))
+        s.js("document.getElementById('modalConfirm').click();"); time.sleep(0.4)
+        check("拒绝删除后 SFTP 配置保持不变",
+              s.js("return !!document.getElementById('btnSftpEdit')")
+              and "192.168.1.100" in s.js("return document.querySelectorAll('.des-card')[0].innerText"))
+        # 停用后可删除 → 空态 → 重新配置
+        s.click("#btnSftpToggle"); time.sleep(0.5)
+        s.click("#btnSftpDelete"); time.sleep(0.5)
+        check("停用后允许删除，弹窗说明影响并提示「先停用再删除」口径",
+              s.js("return document.getElementById('modalTitle').innerText.trim();") == "删除 SFTP 接入"
+              and "远程备份" in s.js("return document.getElementById('modalBody').innerText"))
+        s.js("document.getElementById('modalConfirm').click();"); time.sleep(0.6)
+        check("删除后为空态，入口变为「配置SFTP接入」",
+              s.js("return document.querySelectorAll('.des-card')[0].innerText.indexOf('尚未接入')>=0")
+              and s.js("return document.getElementById('btnSftpEdit').innerText.trim();")
+                  == "配置SFTP接入")
+        check("原型面板的「已配置远程 SFTP」开关同步为未勾选",
+              not s.js("return document.getElementById('protoSftp').checked"))
+        s.go("#/settings/backup")
+        check("跨页一致：SFTP 删除后备份页显示「未在第三方接入中配置远程 SFTP」",
+              "未在「第三方接入」中配置远程 SFTP" in
+                  s.js("return document.querySelector('.des-card').innerText"))
+        s.go("#/settings/integration")
+        s.click("#btnSftpEdit"); time.sleep(0.5)
+        check("创建表单为空且密码为必填（未配置时不允许留空）",
+              s.js("return document.getElementById('sftpIp').value") == ""
+              and s.js("return document.getElementById('sftpPath').value") == "")
+        s.click("#drawerExtra"); time.sleep(0.4)
+        check("空表单测试连通性直接失败（必填项缺失）",
+              "连通性测试未通过" in s.js("return document.getElementById('sftpTestMsg').innerText")
+              and s.js("return document.getElementById('drawerSubmit').disabled"))
+        s.js("""function svs(id,v){var e=document.getElementById(id);e.value=v;
+                  e.dispatchEvent(new Event('input',{bubbles:true}));}
+                svs('sftpIp','192.168.1.100');svs('sftpPort','22');svs('sftpUser','omsbackup');
+                svs('sftpPwd','Oms@Backup1');svs('sftpPath','/data/backup');""")
+        time.sleep(0.3)
+        s.click("#drawerSubmit"); time.sleep(0.4)
+        check("未测试通过时「保存」保持禁用，点击不会提交（抽屉仍打开）",
+              not s.js("return document.getElementById('drawer').hidden")
+              and s.js("return document.getElementById('drawerSubmit').disabled"))
+        s.click("#drawerExtra"); time.sleep(0.5)
+        s.click("#drawerSubmit"); time.sleep(0.6)
+        check("测试通过后保存成功，SFTP 恢复为已配置",
+              s.js("return document.getElementById('drawer').hidden")
+              and "192.168.1.100" in s.js("return document.querySelectorAll('.des-card')[0].innerText")
+              and s.js("return document.getElementById('protoSftp').checked"))
+        s.shot("87-sftp-configured.png")
+
+        # --- CA 服务器接入 ---
+        cacard = s.js("""return document.querySelectorAll('.des-card')[1].innerText.replace(/\\n/g,' | ');""")
+        check("CA 卡片展示基础信息：IP / 端口 / 路径 / 证书自动更新提前天数",
+              "10.20.30.40" in cacard and "8443" in cacard and "/ca/oms" in cacard
+              and "30 天" in cacard, cacard[:110])
+        check("CA 卡片展示 证书 / CA证书 / 证书私钥 文件名与「私钥密码已配置（不回显）」",
+              "oms-nginx.crt" in cacard and "oms-ca.crt" in cacard
+              and "oms-nginx.key" in cacard and "已配置" in cacard
+              and "不回显" in cacard)
+        check("CA 卡片说明服务对象为 Nginx 对外证书",
+              "Nginx 证书" in cacard)
+        s.click("#btnCaEdit"); time.sleep(0.5)
+        check("CA 修改抽屉标题与两个分区（基础信息 / 证书与私钥）",
+              s.js("return document.getElementById('drawerTitle').innerText.trim();") == "修改CA服务器接入"
+              and s.texts("#drawerBody .f-section") == ["基础信息", "证书与私钥"],
+              str(s.texts("#drawerBody .f-section")))
+        check("CA 修改表单与创建一致：带出 IP / 端口 / 路径 / 提前天数，私钥密码不回显",
+              s.js("return document.getElementById('caIp').value") == "10.20.30.40"
+              and s.js("return document.getElementById('caPort').value") == "8443"
+              and s.js("return document.getElementById('caPath').value") == "/ca/oms"
+              and s.js("return document.getElementById('caRenewDays').value") == "30"
+              and s.js("return document.getElementById('caKeyPwd').value") == ""
+              and s.js("return document.getElementById('caKeyPwd').placeholder") == "不修改请留空")
+        check("CA 表单含 证书 / CA证书 / 证书私钥 三个上传栏并带出当前文件名",
+              s.texts("#drawerBody .up-name") == ["oms-nginx.crt · 4.2 KB", "oms-ca.crt · 3.1 KB",
+                                                 "oms-nginx.key · 1.7 KB"],
+              str(s.texts("#drawerBody .up-name")))
+        s.shot("88-ca-drawer.png")
+        s.js("""function sc1(id,v){var e=document.getElementById(id);e.value=v;
+                  e.dispatchEvent(new Event('input',{bubbles:true}));}
+                sc1('caRenewDays','200');""")
+        time.sleep(0.3)
+        s.click("#drawerSubmit"); time.sleep(0.4)
+        check("提前天数超出 7-180 被拒",
+              "7-180" in s.js("""return document.querySelector('[data-field="caRenewDays"] .f-error').innerText;"""))
+        s.js("""function sc2(id,v){var e=document.getElementById(id);e.value=v;
+                  e.dispatchEvent(new Event('input',{bubbles:true}));}
+                sc2('caRenewDays','45');sc2('caIp','2001:db8::5');""")
+        time.sleep(0.3)
+        s.click("#drawerSubmit"); time.sleep(0.4)
+        check("CA 地址只允许 IPv4（IPv6 被拒）",
+              s.js("""return document.querySelector('[data-field="caIp"] .f-error').innerText;""")
+                  == "仅支持 IPv4 地址")
+        s.js("""function sc3(id,v){var e=document.getElementById(id);e.value=v;
+                  e.dispatchEvent(new Event('input',{bubbles:true}));}
+                sc3('caIp','10.20.30.41');""")
+        time.sleep(0.3)
+        s.click("#drawerSubmit"); time.sleep(0.6)
+        check("CA 保存成功，卡片同步更新 IP 与提前天数",
+              s.js("return document.getElementById('drawer').hidden")
+              and "10.20.30.41" in s.js("return document.querySelectorAll('.des-card')[1].innerText")
+              and "45 天" in s.js("return document.querySelectorAll('.des-card')[1].innerText"))
+        # 删除 → 空态 → 重新接入（文件必填）
+        s.click("#btnCaDelete"); time.sleep(0.5)
+        check("删除 CA 接入有二次确认并提示影响（不提供回退自签）",
+              s.js("return document.getElementById('modalTitle').innerText.trim();") == "删除 CA 服务器接入"
+              and "已签发的证书不受影响" in s.js("return document.getElementById('modalBody').innerText"))
+        s.js("document.getElementById('modalConfirm').click();"); time.sleep(0.6)
+        check("删除后为空态，入口变为「接入CA服务器」",
+              s.js("return document.querySelectorAll('.des-card')[1].innerText.indexOf('尚未接入')>=0")
+              and s.js("return document.getElementById('btnCaEdit').innerText.trim();") == "接入CA服务器")
+        s.click("#btnCaEdit"); time.sleep(0.5)
+        check("创建 CA 表单为空，提前天数默认 30",
+              s.js("return document.getElementById('caIp').value") == ""
+              and s.js("return document.getElementById('caRenewDays').value") == "30")
+        s.click("#drawerSubmit"); time.sleep(0.4)
+        check("创建 CA 时 IP/端口/路径/三个文件/私钥密码 均必填",
+              set(s.js("""return Array.from(document.querySelectorAll('#drawerBody .f-field.has-error'))
+                            .map(function(e){return e.getAttribute('data-field');});"""))
+              == {"caIp", "caPort", "caPath", "up-cert", "up-ca", "up-key", "caKeyPwd"},
+              str(s.js("""return Array.from(document.querySelectorAll('#drawerBody .f-field.has-error'))
+                            .map(function(e){return e.getAttribute('data-field');});""")))
+        s.js("""function scc(id,name,text){var inp=document.getElementById(id);
+                  var dt=new DataTransfer();
+                  dt.items.add(new File([text],name,{type:'text/plain'}));
+                  inp.files=dt.files;
+                  inp.dispatchEvent(new Event('change',{bubbles:true}));}
+                scc('file-cert','oms-nginx.crt','-----BEGIN CERTIFICATE-----');
+                scc('file-ca','oms-ca.crt','-----BEGIN CERTIFICATE-----');
+                scc('file-key','oms-nginx.key','-----BEGIN PRIVATE KEY-----');""")
+        time.sleep(0.4)
+        s.js("""function sc4(id,v){var e=document.getElementById(id);e.value=v;
+                  e.dispatchEvent(new Event('input',{bubbles:true}));}
+                sc4('caIp','10.20.30.40');sc4('caPort','8443');sc4('caPath','/ca/oms');
+                sc4('caKeyPwd','Ca@Key12345');""")
+        time.sleep(0.3)
+        s.click("#drawerSubmit"); time.sleep(0.6)
+        check("补齐必填并上传文件后 CA 接入成功（卡片恢复）",
+              s.js("return document.getElementById('drawer').hidden")
+              and "10.20.30.40" in s.js("return document.querySelectorAll('.des-card')[1].innerText")
+              and "oms-nginx.crt" in s.js("return document.querySelectorAll('.des-card')[1].innerText"))
+
+        # --- 英文态 ---
+        s.click('.lang-btn[data-lang="en-US"]')
+        s.go("#/settings/integration")
+        check("英文态：三块标题与 SNMP 表头均本地化",
+              s.js("""return Array.from(document.querySelectorAll('.des-head')).map(function(e){
+                        return e.innerText.trim().split('\\n')[0];}).join('|');""")
+                  == "SNMP Access|SFTP Configuration|CA Server Configuration"
+              and s.texts("table.data thead th") == ["Name", "SNMP Version", "IP Address", "Port",
+                                                     "Reported Data Type", "Engine ID", "Status",
+                                                     "Actions"],
+              str(s.texts("table.data thead th")))
+        check("英文态：SFTP 表单的三个底部按钮与测试提示本地化",
+              s.js("return document.getElementById('btnSftpEdit').innerText.trim();") != "")
+        s.click("#btnSftpEdit"); time.sleep(0.5)
+        check("英文态 SFTP 抽屉：Test Connection / Close / Save 与测试提示",
+              s.js("return document.getElementById('drawerExtra').innerText.trim();") == "Test Connection"
+              and s.js("return document.getElementById('drawerCancel').innerText.trim();") == "Cancel"
+              and "Test Connection" in s.js("return document.getElementById('sftpTestMsg').innerText"))
+        s.shot("89-m14-en.png")
+        s.click("#drawerCancel"); time.sleep(0.4)
+        s.click('.lang-btn[data-lang="zh-CN"]')
+        s.nav(PAGE)                       # 恢复内存数据，避免影响后续用例
+
         # ---------- 13. 任务中心入口 ----------
         print("\n[13] 任务中心入口（FR-COM-002）")
         s.go("#/home")
@@ -3099,6 +3561,10 @@ def main():
         kids_sec = s.texts("#settingsGroup .nav-child")
         check("安全管理员「设置」内只剩三栏：安全策略 / 操作日志 / 账户管理",
               kids_sec == ["安全策略", "操作日志", "账户管理"], str(kids_sec))
+        # 安全管理员不可见第三方接入：直达应回落到首页
+        s.go("#/settings/integration")
+        check("安全管理员直达第三方接入回落首页",
+              s.js("return location.hash") == "#/home", s.js("return location.hash"))
         check("安全管理员看不到上层业务模块菜单",
               s.texts("#navSlot .nav-item") == [], str(s.texts("#navSlot .nav-item")))
         check("安全管理员仍保留「首页」",

@@ -155,7 +155,10 @@ def main():
     zhs = set(zh)
     # 3. i18n 引用
     used = set(re.findall(r"\btf?\('([A-Za-z_$][\w$]*)'", strip_comments(body)))
-    used |= set(re.findall(r'data-i18n(?:-ph)?="([A-Za-z_$][\w$]*)"', src))
+    # fField('id', 'labelKey') / upField('kind', 'labelKey') 的第二个参数也是 i18n 键
+    used |= set(re.findall(r"\b(?:fField|upField)\('[^']*',\s*'([A-Za-z_$][\w$]*)'",
+                           strip_comments(body)))
+    used |= set(re.findall(r'data-i18n(?:-ph|-title)?="([A-Za-z_$][\w$]*)"', src))
     cfg = strip_comments(object_body(src, r"var DRAWER_CFG\s*="))
     used |= set(re.findall(r":\s*'([A-Za-z_$][\w$]*)'", cfg))
     used |= set(re.findall(r"^\s*(?:title|sub|submit|note):\s*'([A-Za-z_$][\w$]*)'", cfg, re.M))
