@@ -17,7 +17,7 @@
         资源组管理 / 用户组管理 / 账户管理 / 会话管理
   ------------------------------------------------------------------
   待确认：
-    1. 任务中心（FR-COM-002）在信息架构中没有归属，见页面底部「原型说明」浮层。
+    1. 任务中心（FR-COM-002）不占侧边栏席位，常驻顶栏；页面本体见下方 renderTaskPage()。
     2. 设置下的 13 个子条目是否需要在侧边栏内再分组（如 安全合规 / 日志告警 / 接入与组织）。
 -->
 <html lang="zh-CN" data-lang="zh-CN">
@@ -1185,6 +1185,75 @@
     .des-card.labels-wide .des-row{ flex-direction:column; gap:4px; }   /* 长标签行改上下排布 */
     .comp-name{ width:auto; }
   }
+
+  /* ===================== 任务中心（M11 FR-COM-002） ===================== */
+  .tc-name{ display:inline-flex; align-items:center; gap:7px; max-width:280px;
+            border:0; padding:0; background:transparent; color:var(--brand-600);
+            font-family:inherit; font-size:13px; font-weight:600; text-align:left; cursor:pointer; }
+  .tc-name .tc-name-text{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tc-name:hover .tc-name-text{ text-decoration:underline; }
+  .tc-name:focus-visible{ outline:2px solid var(--brand-500); outline-offset:2px; border-radius:4px; }
+  .tc-kind{ flex:none; display:inline-flex; align-items:center; height:18px; padding:0 6px;
+            border-radius:5px; background:#F2F5FA; color:var(--text-3);
+            font-size:11px; font-weight:500; text-decoration:none; }
+  .badge-queue{ background:#F2F5FA; color:var(--text-2); }
+  .badge-run{ background:var(--brand-soft); color:var(--brand-700); }
+  .badge-ok{ background:var(--success-bg); color:#0B7F58; }
+  .badge-fail{ background:var(--danger-bg); color:#B72B23; }
+  .badge-cancel{ background:#F2F5FA; color:var(--text-3); }
+  .badge-canceling{ background:#FFF4E5; color:#B76E00; }
+  .tc-progress{ display:flex; align-items:center; gap:8px; min-width:132px; }
+  .tc-track{ flex:1; height:6px; border-radius:999px; background:#EDF1F7; overflow:hidden; }
+  .tc-bar{ height:100%; border-radius:999px; background:var(--brand-500); transition:width .3s ease; }
+  .tc-bar.is-ok{ background:var(--success); }
+  .tc-bar.is-fail{ background:var(--danger); }
+  .tc-bar.is-cancel{ background:#C3CCDA; }
+  .tc-num{ flex:none; width:34px; text-align:right; font-size:12px; color:var(--text-3);
+           font-variant-numeric:tabular-nums; }
+  .tc-queue{ font-size:12.5px; color:var(--text-3); white-space:nowrap; }
+  .tc-id{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+          font-size:12px; color:var(--text-2); white-space:nowrap; }
+  .tc-time{ white-space:nowrap; color:var(--text-2); font-variant-numeric:tabular-nums; }
+  .tc-user{ white-space:nowrap; color:var(--text-2); }
+  .tc-toolbar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+  .tc-hint{ font-size:12.5px; color:var(--text-3); }
+
+  /* 任务日志抽屉：复用 .drawer 的观感，独立实例，避免与表单抽屉的状态机互相干扰 */
+  .tc-mask{ position:fixed; inset:0; z-index:70; background:rgba(17,24,39,.38); }
+  .tc-drawer{ position:fixed; top:0; right:0; bottom:0; z-index:71;
+              display:flex; flex-direction:column; width:520px; max-width:100vw;
+              background:#fff; box-shadow:-12px 0 40px rgba(12,20,40,.16);
+              animation:tcSlide .24s cubic-bezier(.22,.61,.36,1) both; }
+  @keyframes tcSlide{ from{ transform:translateX(24px); opacity:.6 } to{ transform:none; opacity:1 } }
+  .tc-drawer-head{ flex:none; display:flex; align-items:flex-start; gap:12px;
+                   padding:18px 22px 14px; border-bottom:1px solid var(--line-soft); }
+  .tc-drawer-head h2{ margin:0; font-size:16.5px; font-weight:650; }
+  .tc-drawer-head p{ margin:6px 0 0; font-size:12.5px; color:var(--text-3); line-height:1.6; }
+  .tc-drawer-close{ flex:none; margin-left:auto; width:30px; height:30px;
+                    border:0; border-radius:8px; background:transparent;
+                    color:var(--text-3); font-size:17px; line-height:1; cursor:pointer; }
+  .tc-drawer-close:hover{ background:#F2F5FA; color:var(--text-1); }
+  .tc-drawer-body{ flex:1; min-height:0; overflow-y:auto; padding:18px 22px 24px; }
+  .tc-kv{ display:grid; grid-template-columns:88px 1fr; gap:10px 12px; margin:0 0 20px; font-size:13px; }
+  .tc-kv dt{ color:var(--text-3); }
+  .tc-kv dd{ margin:0; color:var(--text-1); word-break:break-all; }
+  .tc-kv dd.mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+                  font-size:12px; color:var(--text-2); }
+  .tc-log-title{ margin:0 0 12px; font-size:13.5px; font-weight:650; }
+  .tc-log-title span{ margin-left:6px; color:var(--text-3); font-weight:400; font-size:12px; }
+  .tc-timeline{ position:relative; margin:0; padding:0 0 0 18px; list-style:none; }
+  .tc-timeline::before{ content:""; position:absolute; left:4px; top:6px; bottom:6px;
+                        width:1px; background:var(--line); }
+  .tc-tl{ position:relative; padding:0 0 16px; }
+  .tc-tl:last-child{ padding-bottom:0; }
+  .tc-tl::before{ content:""; position:absolute; left:-18px; top:5px; width:9px; height:9px;
+                  border-radius:50%; background:#fff; border:2px solid var(--line-strong); }
+  .tc-tl.is-run::before{ border-color:var(--brand-500); }
+  .tc-tl.is-ok::before{ border-color:var(--success); background:var(--success); }
+  .tc-tl.is-fail::before{ border-color:var(--danger); background:var(--danger); }
+  .tc-tl-time{ display:block; margin-bottom:3px; font-size:12px; color:var(--text-3);
+               font-variant-numeric:tabular-nums; }
+  .tc-tl-text{ font-size:13px; color:var(--text-1); line-height:1.65; }
 </style>
 </head>
 <body>
@@ -8803,16 +8872,7 @@
     }
 
     if (state.route === '#/tasks') {
-      content.innerHTML =
-        '<div class="page-head">' +
-          '<h1 class="page-title">' + t('taskCenter') + '</h1>' +
-          '<p class="page-sub">' + t('taskCenterSub') + '</p>' +
-        '</div>' +
-        '<div class="placeholder">' +
-          icon('inbox', 'placeholder-icon') +
-          '<p class="placeholder-title">' + t('taskPendingTitle') + '</p>' +
-          '<p class="placeholder-desc">' + t('taskPendingDesc') + '</p>' +
-        '</div>';
+      renderTaskPage();
       return;
     }
 
@@ -8919,6 +8979,450 @@
       renderAll();
     });
   });
+
+  /* ===================== 任务中心（M11 FR-COM-002） =====================
+     入口：顶栏「任务中心」（常驻，位于语言切换左侧）。
+     两张表：当前任务（排队中 / 执行中 / 失败待重试）、历史任务（已结束）。
+     名称可点击 → 右侧抽屉展示该任务的执行日志（时间戳 + 文字描述）。
+     数据为原型假数据；重试 / 取消只做交互演示，不发起真实请求。 */
+  var TC_TXT = {
+    'zh-CN': {
+      title: '任务中心',
+      sub: '统一查看日志收集、备份、转储等后台任务的排队、进度与结果。点击任务名称可查看执行日志。',
+      tabCurrent: '当前任务', tabHistory: '历史任务',
+      hintCurrent: '当前任务每 5 秒刷新一次', hintHistory: '历史任务按需查询，不做轮询',
+      fTime: '创建时间', fTo: '至', fStatus: '状态', fAll: '全部',
+      fName: '名称', fNamePh: '任务名称关键字', fId: 'ID', fIdPh: '任务 ID',
+      btnSearch: '查询', btnReset: '重置',
+      cName: '名称', cId: 'ID', cTarget: '任务对象', cStatus: '状态', cStart: '开始时间',
+      cUser: '创建用户', cProgress: '进度', cOp: '操作', cEnd: '结束时间', cDuration: '持续时间',
+      retry: '重试', cancel: '取消',
+      retryOff: '仅失败或已取消的任务可重试', cancelOff: '仅排队中或执行中的任务可取消',
+      emptyTitle: '没有符合条件的任务', emptyDesc: '调整筛选条件后再试，或点击「重置」',
+      foot: '共 {n} 条', footCur: '共 {n} 条（含排队中）',
+      prev: '上一页', next: '下一页',
+      stQueued: '排队中', stRunning: '执行中', stSucceeded: '成功',
+      stFailed: '失败', stCancelled: '已取消', stCanceling: '取消中',
+      queueAt: '排队中 · 第 {n} 位',
+      kindBackup: '备份', kindRtlog: '日志收集', kindArchive: '转储',
+      kindExport: '导出', kindInspect: '巡检',
+      logSub: '任务执行日志，按时间顺序排列',
+      dId: '任务 ID', dKind: '类型', dTarget: '任务对象', dStatus: '状态',
+      dStart: '开始时间', dEnd: '结束时间', dDuration: '持续时间', dUser: '创建用户',
+      dLogs: '执行日志', dLogCount: '共 {n} 条',
+      toastRetry: '已提交重试：将新建一条任务并入队（原型演示）',
+      toastCancel: '已请求取消，执行器将在检查点退出（原型演示）'
+    },
+    'en-US': {
+      title: 'Task Center',
+      sub: 'Track queued, running and finished jobs (log collection, backup, archive). Click a task name to inspect its log.',
+      tabCurrent: 'Active', tabHistory: 'History',
+      hintCurrent: 'Active tasks refresh every 5 seconds', hintHistory: 'History is queried on demand',
+      fTime: 'Created', fTo: 'to', fStatus: 'Status', fAll: 'All',
+      fName: 'Name', fNamePh: 'Task name keyword', fId: 'ID', fIdPh: 'Task ID',
+      btnSearch: 'Search', btnReset: 'Reset',
+      cName: 'Name', cId: 'ID', cTarget: 'Target', cStatus: 'Status', cStart: 'Started',
+      cUser: 'Created by', cProgress: 'Progress', cOp: 'Actions', cEnd: 'Finished', cDuration: 'Duration',
+      retry: 'Retry', cancel: 'Cancel',
+      retryOff: 'Only failed or cancelled tasks can be retried',
+      cancelOff: 'Only queued or running tasks can be cancelled',
+      emptyTitle: 'No matching tasks', emptyDesc: 'Adjust the filters, or click Reset',
+      foot: '{n} in total', footCur: '{n} in total (incl. queued)',
+      prev: 'Prev', next: 'Next',
+      stQueued: 'Queued', stRunning: 'Running', stSucceeded: 'Succeeded',
+      stFailed: 'Failed', stCancelled: 'Cancelled', stCanceling: 'Cancelling',
+      queueAt: 'Queued · position {n}',
+      kindBackup: 'Backup', kindRtlog: 'Logs', kindArchive: 'Archive',
+      kindExport: 'Export', kindInspect: 'Inspection',
+      logSub: 'Execution log in chronological order',
+      dId: 'Task ID', dKind: 'Type', dTarget: 'Target', dStatus: 'Status',
+      dStart: 'Started', dEnd: 'Finished', dDuration: 'Duration', dUser: 'Created by',
+      dLogs: 'Execution log', dLogCount: '{n} entries',
+      toastRetry: 'Retry submitted: a new task will be queued (demo)',
+      toastCancel: 'Cancellation requested; the executor stops at the next checkpoint (demo)'
+    }
+  };
+  function tt(k) {
+    var m = TC_TXT[state.lang] || TC_TXT['zh-CN'];
+    return m[k] != null ? m[k] : k;
+  }
+  function ttF(k, vars) {
+    return tt(k).replace(/\{(\w+)\}/g, function (m, key) { return vars[key] != null ? vars[key] : m; });
+  }
+
+  var TC_STATUS = {
+    QUEUED:    { key: 'stQueued',    cls: 'badge-queue' },
+    RUNNING:   { key: 'stRunning',   cls: 'badge-run' },
+    SUCCEEDED: { key: 'stSucceeded', cls: 'badge-ok' },
+    FAILED:    { key: 'stFailed',    cls: 'badge-fail' },
+    CANCELLED: { key: 'stCancelled', cls: 'badge-cancel' },
+    CANCELING: { key: 'stCanceling', cls: 'badge-canceling' }
+  };
+  var TC_KIND = {
+    BACKUP: 'kindBackup', RTLOG: 'kindRtlog', ARCHIVE: 'kindArchive',
+    EXPORT: 'kindExport', INSPECT: 'kindInspect'
+  };
+
+  /* 当前任务：排队中 / 执行中 / 失败待重试 / 取消中 */
+  var TC_CURRENT = [
+    { id: 'T-20261030-0041', name: '每日全量备份 · OMS 与模型工程', kind: 'BACKUP',
+      target: '3 个组件', status: 'RUNNING', progress: 62,
+      start: '2026-10-30 02:00:12', user: '系统调度',
+      logs: [
+        ['2026-10-30 02:00:12', '任务入队（业务键 backup:daily:20261030）', 'run'],
+        ['2026-10-30 02:00:14', '开始执行，组件集合：oms、model-lite、terabase', 'run'],
+        ['2026-10-30 02:01:05', 'oms 备份完成，产物 1.8 GB，SHA-256 已记录', 'ok'],
+        ['2026-10-30 02:03:41', 'model-lite 备份完成，产物 2.4 GB', 'ok'],
+        ['2026-10-30 02:04:02', '正在备份 terabase（进度 62%）', 'run']
+      ] },
+    { id: 'T-20261030-0039', name: '运行日志收集 · 近 24 小时', kind: 'RTLOG',
+      target: 'gateway / oms / nginx', status: 'RUNNING', progress: 28,
+      start: '2026-10-30 09:41:50', user: '张运维',
+      logs: [
+        ['2026-10-30 09:41:50', '任务入队，发起人：张运维', 'run'],
+        ['2026-10-30 09:41:52', '时间范围：2026-10-29 09:41 ~ 2026-10-30 09:41', 'run'],
+        ['2026-10-30 09:42:10', '已收集 oms（1/3）', 'ok'],
+        ['2026-10-30 09:42:38', '正在收集 gateway（28%）', 'run']
+      ] },
+    { id: 'T-20261030-0038', name: '告警转储 · 2026-09', kind: 'ARCHIVE',
+      target: '操作日志 + 告警', status: 'QUEUED', progress: 0, queuePos: 2,
+      start: '2026-10-30 10:02:03', user: '系统调度',
+      logs: [
+        ['2026-10-30 10:02:03', '任务入队（业务键 archive:2026-09）', 'run'],
+        ['2026-10-30 10:02:03', '当前排队位置：第 2 位，同类型并发上限 1', 'run']
+      ] },
+    { id: 'T-20261030-0036', name: '操作日志导出 · 账户变更', kind: 'EXPORT',
+      target: '操作日志', status: 'FAILED', progress: 41,
+      start: '2026-10-30 08:15:22', user: '李审计',
+      logs: [
+        ['2026-10-30 08:15:22', '任务入队，筛选条件：类型=账户变更', 'run'],
+        ['2026-10-30 08:15:40', '开始导出，预计 12,480 条', 'run'],
+        ['2026-10-30 08:16:10', '导出失败：目标目录剩余空间不足（需 320 MB，可用 96 MB）', 'fail']
+      ] },
+    { id: 'T-20261030-0035', name: '证书巡检 · 全量', kind: 'INSPECT',
+      target: '3 张证书', status: 'CANCELING', progress: 77,
+      start: '2026-10-30 07:30:00', user: '系统调度',
+      logs: [
+        ['2026-10-30 07:30:00', '任务入队', 'run'],
+        ['2026-10-30 07:30:02', '开始巡检：内部 CA、服务证书、Nginx 证书', 'run'],
+        ['2026-10-30 07:31:19', '已收到取消请求，等待执行器在检查点退出', 'run']
+      ] }
+  ];
+
+  /* 历史任务：均已结束 */
+  var TC_HISTORY = [
+    { id: 'T-20261029-0031', name: '每日全量备份 · OMS 与模型工程', kind: 'BACKUP',
+      target: '3 个组件', status: 'SUCCEEDED', progress: 100,
+      start: '2026-10-29 02:00:09', user: '系统调度',
+      end: '2026-10-29 02:09:33', duration: '9 分 24 秒',
+      logs: [
+        ['2026-10-29 02:00:09', '任务入队', 'run'],
+        ['2026-10-29 02:09:20', '三个组件全部完成，总产物 4.2 GB', 'ok'],
+        ['2026-10-29 02:09:33', '产物已落 PVC，记录 SHA-256，任务成功', 'ok']
+      ] },
+    { id: 'T-20261029-0028', name: '告警转储 · 2026-09（手动）', kind: 'ARCHIVE',
+      target: '操作日志 + 告警', status: 'SUCCEEDED', progress: 100,
+      start: '2026-10-29 14:20:00', user: '王管理',
+      end: '2026-10-29 14:21:07', duration: '1 分 7 秒',
+      logs: [
+        ['2026-10-29 14:20:00', '任务入队，时间窗 2026-09-01 ~ 2026-09-30', 'run'],
+        ['2026-10-29 14:20:44', '两类数据写入完成，manifest 已生成', 'ok'],
+        ['2026-10-29 14:21:07', '包已登记，按保留策略清理最旧 1 个', 'ok']
+      ] },
+    { id: 'T-20261028-0019', name: '运行日志收集 · 故障排查', kind: 'RTLOG',
+      target: '全部组件', status: 'FAILED', progress: 55,
+      start: '2026-10-28 16:02:11', user: '张运维',
+      end: '2026-10-28 16:04:30', duration: '2 分 19 秒',
+      logs: [
+        ['2026-10-28 16:02:11', '任务入队', 'run'],
+        ['2026-10-28 16:03:02', '已收集 3/6 个组件', 'ok'],
+        ['2026-10-28 16:04:30', '收集失败：model-lite-router 容器日志目录不可读（权限拒绝）', 'fail']
+      ] },
+    { id: 'T-20261028-0014', name: '操作日志导出 · 越权尝试', kind: 'EXPORT',
+      target: '操作日志', status: 'CANCELLED', progress: 12,
+      start: '2026-10-28 11:05:40', user: '李审计',
+      end: '2026-10-28 11:06:02', duration: '22 秒',
+      logs: [
+        ['2026-10-28 11:05:40', '任务入队', 'run'],
+        ['2026-10-28 11:06:02', '操作者取消任务，执行器在检查点退出', 'fail']
+      ] },
+    { id: 'T-20261027-0009', name: '证书巡检 · 全量', kind: 'INSPECT',
+      target: '3 张证书', status: 'SUCCEEDED', progress: 100,
+      start: '2026-10-27 03:00:00', user: '系统调度',
+      end: '2026-10-27 03:00:41', duration: '41 秒',
+      logs: [
+        ['2026-10-27 03:00:00', '任务入队', 'run'],
+        ['2026-10-27 03:00:41', 'Nginx 证书剩余 187 天，未触发预警', 'ok']
+      ] },
+    { id: 'T-20261026-0007', name: '每日全量备份 · OMS 与模型工程', kind: 'BACKUP',
+      target: '3 个组件', status: 'SUCCEEDED', progress: 100,
+      start: '2026-10-26 02:00:08', user: '系统调度',
+      end: '2026-10-26 02:08:51', duration: '8 分 43 秒',
+      logs: [['2026-10-26 02:08:51', '任务成功', 'ok']] }
+  ];
+
+  var tcState = {
+    tab: 'current', page: 1, size: 5,
+    f: { from: '', to: '', status: '', name: '', id: '' }
+  };
+
+  function tcList() { return tcState.tab === 'current' ? TC_CURRENT : TC_HISTORY; }
+
+  function tcFiltered() {
+    var f = tcState.f;
+    return tcList().filter(function (x) {
+      if (f.status && x.status !== f.status) return false;
+      if (f.name) {
+        var hay = (x.name + ' ' + tt(TC_KIND[x.kind] || '')).toLowerCase();
+        if (hay.indexOf(f.name.toLowerCase()) < 0) return false;
+      }
+      if (f.id && x.id.toLowerCase().indexOf(f.id.toLowerCase()) < 0) return false;
+      var k = x.start.replace(' ', 'T').slice(0, 16);   // 精确到分钟
+      if (f.from && k < f.from) return false;
+      if (f.to && k > f.to) return false;
+      return true;
+    });
+  }
+
+  function tcBadge(st) {
+    var m = TC_STATUS[st] || { key: null, cls: 'badge-queue' };
+    return '<span class="badge ' + m.cls + '">' + (m.key ? tt(m.key) : esc(st)) + '</span>';
+  }
+
+  function tcProgressCell(x) {
+    if (x.status === 'QUEUED') {
+      return '<span class="tc-queue">' +
+             esc(x.queuePos ? ttF('queueAt', { n: x.queuePos }) : tt('stQueued')) + '</span>';
+    }
+    var pct = Math.max(0, Math.min(100, x.progress || 0));
+    var cls = x.status === 'SUCCEEDED' ? ' is-ok'
+            : x.status === 'FAILED' ? ' is-fail'
+            : x.status === 'CANCELLED' ? ' is-cancel' : '';
+    return '<div class="tc-progress">' +
+             '<div class="tc-track"><div class="tc-bar' + cls + '" style="width:' + pct + '%"></div></div>' +
+             '<span class="tc-num">' + pct + '%</span>' +
+           '</div>';
+  }
+
+  function renderTaskPage() {
+    var all = tcList();
+    var list = tcFiltered();
+    var totalPages = Math.max(1, Math.ceil(list.length / tcState.size));
+    if (tcState.page > totalPages) tcState.page = totalPages;
+    var from = (tcState.page - 1) * tcState.size;
+    var rows = list.slice(from, from + tcState.size);
+
+    var head = ['cName', 'cId', 'cTarget', 'cStatus', 'cStart', 'cUser'];
+    head.push(tcState.tab === 'current' ? 'cProgress' : 'cEnd');
+    if (tcState.tab === 'current') head.push('cOp');
+    else head.push('cDuration');
+
+    var body;
+    if (!rows.length) {
+      body = '<tr><td colspan="' + head.length + '" style="text-align:center;padding:46px 0;">' +
+               '<div style="display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--text-3);">' +
+                 icon('inbox', '') .replace('class=""', 'style="width:34px;height:34px;color:var(--text-4);"') +
+                 '<div style="color:var(--text-2);font-size:14px;">' + tt('emptyTitle') + '</div>' +
+                 '<div>' + tt('emptyDesc') + '</div>' +
+               '</div></td></tr>';
+    } else {
+      body = rows.map(function (x) {
+        var kind = tt(TC_KIND[x.kind] || '');
+        var nameCell =
+          '<td><button type="button" class="tc-name" data-task="' + esc(x.id) + '" title="' + esc(x.name) + '">' +
+            '<span class="tc-kind">' + esc(kind) + '</span>' +
+            '<span class="tc-name-text">' + esc(x.name) + '</span>' +
+          '</button></td>';
+        var base = nameCell +
+          '<td class="tc-id">' + esc(x.id) + '</td>' +
+          '<td>' + esc(x.target) + '</td>' +
+          '<td>' + tcBadge(x.status) + '</td>' +
+          '<td class="tc-time">' + esc(x.start) + '</td>' +
+          '<td class="tc-user">' + esc(x.user) + '</td>';
+
+        if (tcState.tab === 'current') {
+          var canRetry = (x.status === 'FAILED' || x.status === 'CANCELLED');
+          var canCancel = (x.status === 'QUEUED' || x.status === 'RUNNING');
+          return '<tr>' + base +
+            '<td>' + tcProgressCell(x) + '</td>' +
+            '<td><div class="row-actions">' +
+              '<button type="button" class="link-btn" data-tc="retry" data-task="' + esc(x.id) + '"' +
+                (canRetry ? '' : ' disabled title="' + esc(tt('retryOff')) + '"') + '>' + tt('retry') + '</button>' +
+              '<button type="button" class="link-btn is-danger" data-tc="cancel" data-task="' + esc(x.id) + '"' +
+                (canCancel ? '' : ' disabled title="' + esc(tt('cancelOff')) + '"') + '>' + tt('cancel') + '</button>' +
+            '</div></td></tr>';
+        }
+        return '<tr>' + base +
+          '<td class="tc-time">' + esc(x.end || '—') + '</td>' +
+          '<td class="tc-time">' + esc(x.duration || '—') + '</td></tr>';
+      }).join('');
+    }
+
+    var seg =
+      '<div class="seg" role="tablist">' +
+        '<button type="button" class="seg-btn' + (tcState.tab === 'current' ? ' is-active' : '') +
+          '" data-tctab="current" role="tab" aria-selected="' + (tcState.tab === 'current') + '">' +
+          tt('tabCurrent') + '</button>' +
+        '<button type="button" class="seg-btn' + (tcState.tab === 'history' ? ' is-active' : '') +
+          '" data-tctab="history" role="tab" aria-selected="' + (tcState.tab === 'history') + '">' +
+          tt('tabHistory') + '</button>' +
+      '</div>';
+
+    var filters =
+      '<div class="filter-bar">' +
+        '<div class="filter-item"><span>' + tt('fTime') + '</span>' +
+          '<input class="input-sm input-date" id="tcFrom" type="datetime-local" value="' + esc(tcState.f.from) + '" />' +
+          '<span class="filter-sep">' + tt('fTo') + '</span>' +
+          '<input class="input-sm input-date" id="tcTo" type="datetime-local" value="' + esc(tcState.f.to) + '" />' +
+        '</div>' +
+        '<div class="filter-item"><span>' + tt('fStatus') + '</span>' +
+          '<select class="input-sm" id="tcStatus">' +
+            '<option value="">' + tt('fAll') + '</option>' +
+            ['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED'].map(function (k) {
+              return '<option value="' + k + '"' + (tcState.f.status === k ? ' selected' : '') + '>' +
+                     tt(TC_STATUS[k].key) + '</option>';
+            }).join('') +
+          '</select>' +
+        '</div>' +
+        '<div class="filter-item"><span>' + tt('fName') + '</span>' +
+          '<input class="input-sm" id="tcName" type="search" style="width:168px" placeholder="' +
+            esc(tt('fNamePh')) + '" value="' + esc(tcState.f.name) + '" /></div>' +
+        '<div class="filter-item"><span>' + tt('fId') + '</span>' +
+          '<input class="input-sm" id="tcId" type="search" style="width:158px" placeholder="' +
+            esc(tt('fIdPh')) + '" value="' + esc(tcState.f.id) + '" /></div>' +
+        '<span class="filter-spacer"></span>' +
+        '<button type="button" class="btn btn-primary" id="tcSearch">' + tt('btnSearch') + '</button>' +
+        '<button type="button" class="btn" id="tcReset">' + tt('btnReset') + '</button>' +
+      '</div>';
+
+    var footText = tcState.tab === 'current'
+      ? ttF('footCur', { n: list.length })
+      : ttF('foot', { n: list.length });
+
+    content.innerHTML =
+      '<div class="page-head">' +
+        '<h1 class="page-title">' + tt('title') + '</h1>' +
+        '<p class="page-sub">' + tt('sub') + '</p>' +
+      '</div>' +
+      '<div class="tc-toolbar">' + seg +
+        '<span class="filter-spacer"></span>' +
+        '<span class="tc-hint">' + (tcState.tab === 'current' ? tt('hintCurrent') : tt('hintHistory')) + '</span>' +
+      '</div>' +
+      filters +
+      '<div class="table-card">' +
+        '<div class="table-scroll"><table class="data">' +
+          '<thead><tr>' + head.map(function (k) { return '<th>' + tt(k) + '</th>'; }).join('') + '</tr></thead>' +
+          '<tbody>' + body + '</tbody>' +
+        '</table></div>' +
+        '<div class="table-foot">' +
+          '<span>' + footText + '</span>' +
+          '<div class="pager" style="margin-left:auto;display:flex;align-items:center;gap:6px;">' +
+            '<button type="button" id="tcPrev"' + (tcState.page <= 1 ? ' disabled' : '') + '>' + tt('prev') + '</button>' +
+            '<span class="pager-info" style="font-size:12.5px;color:var(--text-3);">' +
+              tcState.page + ' / ' + totalPages + '</span>' +
+            '<button type="button" id="tcNext"' + (tcState.page >= totalPages ? ' disabled' : '') + '>' + tt('next') + '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    bindTaskPage();
+  }
+
+  function bindTaskPage() {
+    content.querySelectorAll('[data-tctab]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        tcState.tab = b.getAttribute('data-tctab');
+        tcState.page = 1;
+        renderTaskPage();
+      });
+    });
+
+    function readFilters() {
+      tcState.f = {
+        from: $('tcFrom').value, to: $('tcTo').value,
+        status: $('tcStatus').value,
+        name: $('tcName').value.trim(), id: $('tcId').value.trim()
+      };
+      tcState.page = 1;
+      renderTaskPage();
+    }
+    $('tcSearch').addEventListener('click', readFilters);
+    $('tcName').addEventListener('keydown', function (e) { if (e.key === 'Enter') readFilters(); });
+    $('tcId').addEventListener('keydown', function (e) { if (e.key === 'Enter') readFilters(); });
+    $('tcReset').addEventListener('click', function () {
+      tcState.f = { from: '', to: '', status: '', name: '', id: '' };
+      tcState.page = 1;
+      renderTaskPage();
+    });
+    $('tcPrev').addEventListener('click', function () { if (tcState.page > 1) { tcState.page--; renderTaskPage(); } });
+    $('tcNext').addEventListener('click', function () { tcState.page++; renderTaskPage(); });
+
+    content.querySelectorAll('table.data tbody tr').forEach(function (tr) {
+      var nameBtn = tr.querySelector('.tc-name');
+      if (nameBtn) {
+        nameBtn.addEventListener('click', function () { openTaskLog(nameBtn.getAttribute('data-task')); });
+      }
+      tr.querySelectorAll('[data-tc]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          if (b.disabled) return;
+          var act = b.getAttribute('data-tc');
+          toast(act === 'retry' ? tt('toastRetry') : tt('toastCancel'), 'ok');
+        });
+      });
+    });
+  }
+
+  /* 任务日志抽屉：独立实例，不复用表单抽屉的状态机 */
+  function openTaskLog(id) {
+    var x = TC_CURRENT.concat(TC_HISTORY).filter(function (v) { return v.id === id; })[0];
+    if (!x) return;
+    closeTaskLog();
+
+    var logs = (x.logs || []).map(function (l) {
+      return '<li class="tc-tl is-' + esc(l[2] || 'run') + '">' +
+               '<span class="tc-tl-time">' + esc(l[0]) + '</span>' +
+               '<div class="tc-tl-text">' + esc(l[1]) + '</div>' +
+             '</li>';
+    }).join('');
+
+    var host = document.createElement('div');
+    host.id = 'tcLogHost';
+    host.innerHTML =
+      '<div class="tc-mask" id="tcLogMask"></div>' +
+      '<aside class="tc-drawer" role="dialog" aria-modal="true" aria-labelledby="tcLogTitle">' +
+        '<div class="tc-drawer-head">' +
+          '<div><h2 id="tcLogTitle">' + esc(x.name) + '</h2><p>' + tt('logSub') + '</p></div>' +
+          '<button type="button" class="tc-drawer-close" id="tcLogClose" aria-label="Close">&#10005;</button>' +
+        '</div>' +
+        '<div class="tc-drawer-body">' +
+          '<dl class="tc-kv">' +
+            '<dt>' + tt('dId') + '</dt><dd class="mono">' + esc(x.id) + '</dd>' +
+            '<dt>' + tt('dKind') + '</dt><dd>' + esc(tt(TC_KIND[x.kind] || '')) + '</dd>' +
+            '<dt>' + tt('dTarget') + '</dt><dd>' + esc(x.target) + '</dd>' +
+            '<dt>' + tt('dStatus') + '</dt><dd>' + tcBadge(x.status) + '</dd>' +
+            '<dt>' + tt('dStart') + '</dt><dd>' + esc(x.start) + '</dd>' +
+            (x.end ? '<dt>' + tt('dEnd') + '</dt><dd>' + esc(x.end) + '</dd>' : '') +
+            (x.duration ? '<dt>' + tt('dDuration') + '</dt><dd>' + esc(x.duration) + '</dd>' : '') +
+            '<dt>' + tt('dUser') + '</dt><dd>' + esc(x.user) + '</dd>' +
+          '</dl>' +
+          '<div class="tc-log-title">' + tt('dLogs') +
+            '<span>' + ttF('dLogCount', { n: (x.logs || []).length }) + '</span></div>' +
+          '<ul class="tc-timeline">' + logs + '</ul>' +
+        '</div>' +
+      '</aside>';
+    document.body.appendChild(host);
+
+    $('tcLogClose').addEventListener('click', closeTaskLog);
+    $('tcLogMask').addEventListener('click', closeTaskLog);
+    document.addEventListener('keydown', taskLogEsc);
+    $('tcLogClose').focus();
+  }
+  function closeTaskLog() {
+    var h = $('tcLogHost');
+    if (h) h.parentNode.removeChild(h);
+    document.removeEventListener('keydown', taskLogEsc);
+  }
+  function taskLogEsc(e) { if (e.key === 'Escape') closeTaskLog(); }
 
   // 路由
   function applyRoute(hash) {

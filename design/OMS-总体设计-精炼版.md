@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | OMS-HLD-001（评审版） |
-| 版本 | V0.98（评审稿） |
+| 版本 | V1.08（评审稿） |
 | 编写日期 | 2026-10-27 |
 | 读者 | 评审人、架构师 |
 | 上游依据 | `docs/requirements/OMS-需求规格说明书.md` 及 18 个模块分册（77 条 FR） |
@@ -172,7 +172,7 @@ flowchart TB
 | 部署单元 | `oms`（1 Pod）、`nginx`（1 Pod）、自建 PostgreSQL 与 Redis；`migrate` 为一次性 Job |
 | 状态 | 会话、失败计数、验证码、队列、锁、产物全部外置，进程内不持有可变状态 |
 | 定时与任务 | 均在应用进程内执行；队列用 `SKIP LOCKED` 抢占；分钟级及以上任务用 ShedLock 互斥，秒级任务不加锁 |
-| 对外暴露 | **HAProxy 装在集群宿主机上**（主备 + 浮动 IP），只做 L4 透传，后端指向本实例的 Nginx Service IP；HAProxy 的监听端口在**安装部署时按实例指定**，因此多套实例不撞端口；Nginx Service 端口固定 443。TLS 仍在 Nginx 终结，HAProxy 不参与证书管理 |
+| 对外暴露 | **HAProxy 装在集群宿主机上**（主备 + 浮动 IP），只做 L4 透传，后端指向本实例的 Nginx Service IP；HAProxy 的监听端口在**安装部署时按实例指定**，因此多套实例不撞端口；Nginx Service 端口固定 443。这个 Service **不固定 `clusterIP`**，靠 `helm.sh/resource-policy: keep` 保证升级时不重建（7.2）——IP 一变，HAProxy 的后端就指向空地址。TLS 仍在 Nginx 终结，HAProxy 不参与证书管理 |
 | 真实客户端 IP | 由 **PROXY protocol** 传入：旧系统用 v1（HAProxy `send-proxy`），Nginx 的 `proxy_protocol` 同时兼容 v1/v2；`set_real_ip_from 0.0.0.0/0`（继承现状），但对外端口（默认 443）由 **NetworkPolicy** 限定为仅 HAProxy 宿主机可访问 |
 | 健康检查 | 走独立的明文 HTTP 端口（如 `8080/healthz`），**不能复用**启用了 `proxy_protocol` 的 443——裸连缺少 PROXY 头会被直接断开 |
 | 实例边界 | 一命名空间 = 一套 OMS 及其上层业务系统；多实例之间不共享 DB / Redis / PVC / ESN |
@@ -263,7 +263,7 @@ flowchart TB
 | 3.1 | 授权与即时失效 | 两维判定（能力 × 范围），变更后受影响会话立即置 `stale` |
 | 3.2 | 认证与单点登录 | 本地与上游两条入口、ticket 一次性、失败不降级 |
 | 3.3 | 审计与转储 | 事务内写 outbox、提交后落库；出主表只能靠转储，日志与告警同包 |
-| 3.4 | 证书与私钥 | 一个内部 CA 两张叶子，私钥不导出、只出 CSR |
+| 3.4 | 证书与私钥 | 一个内部 CA 两张叶子，私钥不导出、只出 CSR；入站与出站信任分开 |
 | 3.5 | 加解密与凭据 | 单层主密钥存 Secret；安装期生成，轮换靠脚本 |
 | 3.6 | 任务中心、备份与调度 | 通用任务中心 + 类型注册；调度器只负责触发 |
 | 3.7 | 告警与上报通道 | 去重无时间窗、不可删；HTTP 同步受理，SNMP 全级别上报 |
@@ -421,7 +421,7 @@ flowchart TD
 1. **每个用户组至少绑定一个准入角色**。绑定接口与用户组保存都要校验：没有准入角色 = 没有任何登录通道，直接拒绝，而不是留一个「能建但登不进」的组。
 2. **准入角色只承载通道权限**，不带任何业务或管理权限；模块注册**不得**把权限点绑到这两个角色上。
 3. **业务与运维管理权限一律由权限角色承担**：管理员角色管 OMS 自身功能，模块服务角色管模块自己的 `fn.*` / `cap.*`。
-4. **管理员角色不再隐含页面登录**。三个内置管理员用户组由初始化脚本预置为「`humanAccess` + 对应管理员角色」；只有管理员角色、没有 `humanAccess` 的组，同样登不进页面。
+4. **管理员角色不再隐含页面登录**。三个内置管理员用户组由初始化脚本预置为「`humanAccess` + 对应管理员角色」；只有管理员角色、没有 `humanAccess` 的组，同样登不进页面。**安全 / 审计管理员组不关联任何资源组**——他们的职责全在 `fn.*`，没有业务数据可看（2.5）；系统管理员组的资源组关联由部署或迁移按需给定。
 5. **准入角色不参与三权分立**（判定只涉及三个管理员编码，见 3.1.4）。
 6. **机机账户 = 所在用户组只绑 `m2mAccess` 的账户**；人机页面 = 所在组绑 `humanAccess`；页面 + API = 所在组两个都绑。三种情况都是显式配置，没有隐含权限。
 
@@ -819,7 +819,7 @@ flowchart LR
 
 三条红线：
 
-- **上传的根不得进入 OMS 自身信任库**。导入是业务写操作；若它能改变系统的信任边界，具备该权限的人就能伪造上游身份。
+- **上传的根不得进入入站信任锚 `oms-ca`**。导入是业务写操作；若它能改变 mTLS 准入的信任边界，具备该权限的人就能伪造上游身份。导入证书也**不自动**把这批根写进 `oms-trust`（出站信任库）——「导入一张证书」与「信任它的签发者」是两件事（3.4.5）。
 - **私钥永不导出**：无页面下载、无 API 返回、无脚本入口，系统只输出 CSR。
 - **不依赖客户端补链**：中间证书必须由 OMS 发全，不能赌浏览器去 CA 官网抓。
 
@@ -864,6 +864,7 @@ flowchart TB
 | --- | --- | --- | --- |
 | nginx | Secret `nginx-tls` | `server.crt`（叶 + 中间链，无根；内部 CA 直签时只有叶）、`server.key`（AES-256 加密 PEM）、`server.key.pass.enc`（口令密文） | 部署流程 / 系统管理员导入 |
 | nginx | ConfigMap `oms-ca` | `ca.crt`（内部 CA 公钥，用于校验客户端证书） | 部署流程 |
+| oms | ConfigMap `oms-trust` | `ca-bundle.pem`（出站信任库，含内部根与导入的外部根） | 部署流程 / 系统管理员 |
 | nginx | `emptyDir{medium: Memory}` | `key.pass`（明文口令，仅 reload 期间存在） | wrapper |
 | oms | Secret `oms-tls` + ConfigMap `oms-ca` | `tls.crt`（叶 + 中间）、`tls.key`（加密 PEM）、`tls.key.pass.enc`；`ca.crt` 来自 `oms-ca` | 部署流程 |
 | oms | `emptyDir{medium: Memory}` | 解密后的 `tls.key`（仅当运行时要求文件路径） | 应用进程自身 |
@@ -872,7 +873,7 @@ flowchart TB
 
 - **明文只在内存中短暂存在**：口令与私钥解密后的形态只出现在 `emptyDir{medium: Memory}`，用完即删。完整的明文生命周期（tmpfs、毫秒级窗口、失败不降级）统一在 **3.5 加解密与凭据** 中定义，本节只描述挂载。
 - **换证路径**：Nginx 证书 → 只更新 `nginx-tls`，卷同步（≤60s）后 wrapper reload，平滑生效；共享服务证书 → 更新 `oms-tls` 后 `rollout restart` 全部业务 Pod 与 oms Pod。
-- **OMS 唯一的 K8s 写权限**：只能写本命名空间的 `nginx-tls` 这一个 Secret（Role 按资源名限定），其余 Secret 由部署流程维护。
+- **OMS 仅有的两个 K8s 写权限**：`nginx-tls`（Secret，换证）与 `oms-trust`（ConfigMap，导入信任 CA）。Role 按资源名限定到这两个对象，其余 Secret / ConfigMap 一律只读。
 - **私钥由业务自己解**：业务 Pod 挂载它所需的 `kmc-modelenginepublic` 主密钥（3.5.3），经 `KmcCryptoPort` 用 KMC 解开口令，再用口令解开私钥。Python 的 `ssl` 要求文件路径，需解密到 `emptyDir{medium: Memory}` 后再加载。
 - **接入契约**：业务系统必须部署 KMC Python 库并挂载对应 KSUser 的主密钥（写进 OMS-INT-001），否则无法解开共享私钥。
 
@@ -1443,6 +1444,47 @@ interface FileStore {
 
 **默认实现**：`LocalFileStore`，根目录挂 PVC，单机文件系统语义。调用方只依赖接口，不感知根目录在哪。
 
+#### 3.4.5 信任库：入站与出站分开
+
+前面几节讲的是「谁信任我们」。这一节讲「我们信任谁」——两者必须是两个东西。
+
+| 卷 | 内容 | 用途 | 谁能改 |
+| --- | --- | --- | --- |
+| `oms-ca` | `ca.crt`（内部 CA 公钥，单条） | **入站**：校验连进来的客户端证书 | 部署 / 迁移 |
+| `oms-trust` | `ca-bundle.pem`（多条 PEM） | **出站**：校验我们连出去的对端 | 部署 + 系统管理员页面导入 |
+
+`oms-trust` 至少要覆盖四个出站场景：CA 服务器（FR-3RD-003）、上游 CAS（3.2.4）、上层业务资源查询接口（8.6 契约 2）、以及内部 CA 自己——内部根在初始化时自动写入。
+
+四条规则：
+
+1. **两者不可合并**。合并意味着管理员在页面导入一个外部根之后，这个根同时获得了 mTLS 准入资格，外部 CA 签发的任意证书都能进集群。信任面必须分开。
+2. **只放 CA 证书（根或中间），不放叶子**。导入时发现叶子证书直接拒绝——叶子进信任库是错误用法，会让"信任哪条链"变得不可推导。
+3. **系统管理员可导入，全程留痕**：记录操作者、SHA-256 指纹、来源说明、有效期；重复导入按指纹去重。写权限收敛到 `oms-trust` 这一个 ConfigMap（4.9），除此之外 OMS 只能写 `nginx-tls`。
+4. **导入不等于立即被使用**：写入 `oms-trust` 后，出站客户端在下一次建立连接时生效；是否需要重启归 DD。
+
+> **这个 ConfigMap 要扛得住 Helm**：它的内容由页面写入，chart 里必须打 `helm.sh/resource-policy: keep`（与 `nginx-tls` 一起，见 7.2）。否则下一次 `helm upgrade` 或 `helm rollback` 会把导入的根冲掉，且不报错——只表现为出站调用突然失败。
+
+**导入时的五项校验**（只校验证书自身，不依赖任何外部服务）：
+
+| # | 校验项 | 规则 | 不通过 |
+| --- | --- | --- | --- |
+| 1 | 解析 | 能解析为一张或多张 X.509 证书（PEM / DER） | 拒绝 |
+| 2 | 有效期 | 当前时间落在 `notBefore` ~ `notAfter` 之间 | 拒绝 |
+| 3 | 密钥强度 | RSA ≥ 3072、DSA ≥ 2048、EC ≥ 256；其它算法不校验 | 拒绝 |
+| 4 | 签名算法 | 不得包含 MD2 / MD4 / MD5 / SHA0 / SHA1 / RIPEMD | 拒绝 |
+| 5 | CA 基本约束 | 声明为 CA 的证书必须 `BasicConstraints CA=TRUE` | 拒绝 |
+
+**吊销状态不校验**：本期没有 CRL / OCSP 通道（9.2 AR-07），这一项明确不做——不做「查不到就当吊销」的伪校验，也不做「记个地址就算校验过」的摆设。已吊销的 CA 由管理员在导入前自行确认。
+
+**导入形态是开放的**：单张 CA 证书、中间 CA 链、单张根 CA、根 CA 链都可以，**不要求是根**，也**不校验链的完整性**——中间 CA 单独导入是合法场景（客户只信任某条中间链）。
+
+> **内部 CA 也要满足同一套强度要求**：部署期生成内部 CA 时按 RSA ≥ 3072 执行，否则我们自己写进 `oms-trust` 的根过不了自己的校验。
+> **Nginx 叶子证书不受这条约束**：它走 3.4.2 的另一套逻辑（服务端证书，不是信任锚），`FR-CERT-004` 的默认 2048 仍然有效。
+
+> 这与 3.4.2 的 Nginx 证书导入是两套规则，不要混：那边要求上传内容能唯一定位「叶 → 中间 → 根」的完整路径，因为要交给 Nginx 做服务端；信任库这边只是「我信这个签发者」，没有链可走也成立。
+
+为什么要有这一节：旧底座有一个 `ca_truststore.jks`，但它没有任何 Pod 读取，是死配置——所以旧系统从来没有"出站校验"这回事。新底座要接 CA 服务器、上游 CAS 和业务接口，必须有这个东西。迁移时旧库里的客户根会被转成 PEM 迁进来（`OMS-MIG-001` 10.6）。
+
 ## 4. 安全要求与落实
 
 > 依据 `ME-系统安全要求总结.md`（2026-10-27，基于 `oms-extension`、`model-lite`、`terrabase`、`oms-ui` 四仓的 Helm Chart、Dockerfile 与启动脚本整理）。该文档描述的是**现状与要求**；本章把它转成设计约束，并在 4.14 给出与本文其他章节不一致条目的裁决结果。威胁建模与攻击面分析见第 5 章。
@@ -1519,6 +1561,7 @@ Nginx 是另一类：master 进程需要绑定 443，以 root 启动，worker �
 | `nginx-tls` | Secret | `0440` | Nginx 私钥与口令密文 |
 | `ca-key` | Secret | `0600` | CA 私钥，仅部署/轮换 Job 挂载 |
 | `oms-ca` | ConfigMap | `0444` | 公开证书 |
+| `oms-trust` | ConfigMap | `0444` | 出站信任库，公开证书；**OMS 对其有写权限**（见 4.9） |
 | `nginx-routes` | ConfigMap | `0444` | 路由片段 |
 | `oms-data` | PVC | `0750` | 产物目录，属主可写、组可读 |
 
@@ -1584,7 +1627,7 @@ Nginx 是另一类：master 进程需要绑定 443，以 root 启动，worker �
 
 | ServiceAccount | 用途 | 权限 |
 | --- | --- | --- |
-| `oms` | 应用主进程 | **只对 `nginx-tls` 一个 Secret 有写权限**；其余 Secret 只读挂载（由 kubelet 完成，不需要 API 权限） |
+| `oms` | 应用主进程 | **只对两个资源有写权限**：`nginx-tls`（Secret）与 `oms-trust`（ConfigMap）；其余 Secret 只读挂载（由 kubelet 完成，不需要 API 权限） |
 | `nginx` | 反向代理 | 读取挂载的 Secret / ConfigMap；无需 API 写权限 |
 | `biz` | 业务 Pod | 最小权限，按需授予 |
 | `deploy-job` | 部署 / 轮换 | 写证书类 Secret、创建一次性 Job |
@@ -1677,7 +1720,7 @@ Nginx 的健康检查走独立明文端口（2.3），不能复用启用了 `pro
 | 对象 | 做法 | 理由 |
 | --- | --- | --- |
 | 服务间证书 | **重签**，由内部 CA 签发 | 现有 mTLS 不认证身份，没有谁在 pin 它；重签比迁移密钥材料干净 |
-| 内部 CA | **优先复用现有**（`cube-security-serverca` 已是 PEM） | 重签只换叶子不换锚，客户端信任库一字不改；只有 SAN 覆盖不到新服务名时才重建 |
+| 内部 CA | **新建，不复用** | 旧 CA 归属在平台层，且无 CRL/OCSP；复用等于把旧问题带进新体系。终端不受影响（Nginx 证书不换），集群内容器挂载新根即可 |
 | Nginx 对外证书 | **维持原状，不动** | 换证书会导致终端重新信任，客户侧有额外动作；旧 p12/JKS 保留一个版本备回滚 |
 
 **回滚**：密文从未被改写，回滚只是换回挂载与配置，不涉及数据反向迁移。真正的不可逆点在割接之后（`OMS-MIG-001` 的 P7），不在本节。
@@ -1744,7 +1787,7 @@ Nginx 的健康检查走独立明文端口（2.3），不能复用启用了 `pro
 | 8 | 内部服务端口 | ClusterIP | 横向调用、伪造身份头 | NetworkPolicy + 应用层令牌；业务 ClusterIP | 同命名空间内被攻破的 Pod 可发请求 |
 | 9 | 数据面 | PG:5432 / Redis:6379 | 弱口令、未加密连接 | 两者均强制口令；TLS（生产建议）；网络策略 | 集群内明文连接 |
 | 10 | 出站通道 | SNMP / SFTP / CA | 凭据泄露、SSRF 借道 | 凭据加密、目标白名单 | 未做全量出站审计 |
-| 11 | K8s API | ServiceAccount token | 权限滥用 | 独立 SA、无 `*`、只对 `nginx-tls` 写 | Pod 内 token 可被读取 |
+| 11 | K8s API | ServiceAccount token | 权限滥用 | 独立 SA、无 `*`、只对 `nginx-tls` 与 `oms-trust` 写 | Pod 内 token 可被读取 |
 | 12 | 运维通道 | kubectl / exec | 直接读 Secret、改数据 | **不防御** | 最高风险项，见 5.7 |
 | 13 | 镜像供应链 | 镜像仓库 | 投毒、匿名拉取 | digest 固定、`imagePullSecrets` | 流水线本身不在范围 |
 
@@ -1980,16 +2023,25 @@ Nginx 的健康检查走独立明文端口（2.3），不能复用启用了 `pro
 | | `cert-rotate` | Job | 按需 | CA 签发、证书轮换 |
 | | `release` | Job | 一次性 | 静态资源发布与 `current` 指针切换（7.3） |
 | | `module-install` | Job | 按需 | 模块注册、写路由片段、部署静态资源（7.3） |
-| Service | `nginx` | Service（类型由环境决定） | — | HAProxy 指向其 Service IP（2.3） |
+| Service | `nginx` | Service（类型由环境决定） | — | HAProxy 指向其 Service IP（2.3）；须 `resource-policy: keep`，**不固定 `clusterIP`** |
 | | `oms` / `postgres` / `redis` | ClusterIP | — | 仅集群内可达 |
 | 配置 | `oms-config` | ConfigMap | — | 非敏感配置 |
 | | `oms-ca` | ConfigMap | — | 内部 CA 公钥（见 3.4.3） |
-| | `nginx-routes` | ConfigMap | — | 路由片段，模块自维护 |
+| | `oms-trust` | ConfigMap | — | 出站信任库（见 3.4.5）；须 `resource-policy: keep` |
+| | `nginx-routes` | ConfigMap | — | 路由片段，模块安装 Job 写入；须 `resource-policy: keep` |
 | 密钥 | `kmc-oms` / `kmc-nginx` / `kmc-modelenginepublic` | Secret | — | KMC 主密钥与校验文件，按需挂载（3.5.3） |
-| | `oms-db-cred` / `oms-tls` / `nginx-tls` / `ca-key` | Secret | — | 密文与口令，见 3.5.3 与 4.5 |
+| | `oms-db-cred` / `oms-tls` / `ca-key` | Secret | — | 密文与口令，见 3.5.3 与 4.5 |
+| | `nginx-tls` | Secret | — | 换证目标；须 `resource-policy: keep`（见本节上方说明） |
 | 存储 | `pg-data` / `redis-data` / `oms-data` / `oms-static` | PVC | — | 数据、产物、静态资源 |
 | 隔离 | NetworkPolicy | — | — | 见 4.8 |
 | 身份 | ServiceAccount | — | — | 见 4.9 |
+
+> **有四个资源必须打 `helm.sh/resource-policy: keep`**，分两类理由：
+>
+> | 资源 | 理由 |
+> | --- | --- |
+> | `nginx-tls` / `oms-trust` / `nginx-routes` | **内容会被运行期改写**（换证、导入信任 CA、模块安装 Job 写路由）。chart 若当普通资源管理，`helm upgrade` / `helm rollback` 会原样覆盖——不报错，只表现为「证书变回旧的」「出站调用失败」「模块页面 404」 |
+> | `nginx` Service | **身份必须稳定**。HAProxy 的后端就是这个 Service 的 `clusterIP`，升级时一旦重建，IP 变了，HAProxy 指向空地址。所以**不固定 `clusterIP`**（固定值会与地址池冲突），改用 keep 保住同一个对象 |
 
 资源配额（**当前取值，见 7.6**）：
 
@@ -2030,7 +2082,7 @@ flowchart LR
 
 **路由（需要 reload，但不重启）**：
 
-1. 模块的安装 Job 写入自己的 `nginx-routes` 片段（`<module>.conf`）——**OMS 不代写**，所以 OMS 的 K8s 写权限仍然只有 `nginx-tls`；
+1. 模块的安装 Job 写入自己的 `nginx-routes` 片段（`<module>.conf`）——**OMS 不代写**，所以 OMS 的 K8s 写权限只有 `nginx-tls` 与 `oms-trust`；这个 ConfigMap 必须打 `helm.sh/resource-policy: keep`（7.2），否则升级会把所有模块路由抹掉、页面全 404；
 2. 卷同步后 wrapper 检测到 `..data` 变化 → 解密口令 → `nginx -t`；
 3. 校验通过才 `nginx -s reload`；失败则保留旧配置，旧路由继续服务。
 
@@ -2506,6 +2558,16 @@ OMS 与上层业务之间的接口只有六个，全部固定路径、固定语�
 | V0.87 | 2026-10-27 | 终校：3.4.3 挂载命名与 3.5.3/4.5 统一为 `oms-tls`/`oms-ca`（ConfigMap）；第 5 章五处误引 4.10/4.1 改为 3.5（信任边界），6.2 误引 3.1.4 改为 3.1.5，O-06 误引 4.9 改为 4.13，Nginx 证书过期缓解误引 3.4.3 改为 3.4.2；3.4.1「五条规则」改四条、7.3 停用规则拆出校验清单、8.2「三条约束」改两条（V0.77 已删时间范围条）、7.4 场景计数表述修正；8.1 域清单补 `sso`/`metering`/`registry`；3.8.2 错误码示例对齐 8.2 的 `AUTH_101`、3.8.3 profile 路径补 `/oms/ui` 前缀；FR-ACC 引用 001 改 004/007（终止会话的出处）；前置事项补列配套另册 `OMS-INT-001` / `OMS-TST-001`；变更记录表合并被空行截断的两段 |
 | V0.88 | 2026-10-27 | 准入角色移入 3.1.5 与角色建模合并，3.2.5 只保留登录通道判定；3.1.5/3.1.6 顺延 |
 | V0.89 | 2026-10-27 | 准入角色简化为 `m2mAccess`（token）与 `humanAccess`（页面），通道与权限分离；每个用户组至少绑定一个准入角色 |
+| V1.08 | 2026-10-30 | `nginx` Service 也打 keep（HAProxy 后端是它的 clusterIP，重建即断），明确**不固定 clusterIP** 以免与地址池冲突；7.2 的 keep 说明按「内容可变 / 身份须稳定」两类重写 |
+| V1.07 | 2026-10-30 | `nginx-routes` 同样标注 `helm.sh/resource-policy: keep`（模块安装 Job 写入，升级会抹掉全部模块路由）；7.2 与 7.3 同步 |
+| V1.06 | 2026-10-30 | `nginx-tls` 与 `oms-trust` 标注 `helm.sh/resource-policy: keep`（两者都会被页面改写，Helm 升级会冲掉）；3.4.5 与 7.2 同步 |
+| V1.05 | 2026-10-30 | 给 OMS 增加 `oms-trust` ConfigMap 的写权限（导入信任 CA 需要），3.4.3 / 3.4.5 / 4.5 / 4.9 / 5.5 同步；K8s 写权限从「一个 Secret」扩为「一个 Secret + 一个 ConfigMap」 |
+| V1.04 | 2026-10-30 | 信任库导入校验由六项改为五项：**吊销状态明确不校验**（无 CRL/OCSP 通道，不做伪校验）；补注 Nginx 叶子证书不受 3072 约束 |
+| V1.03 | 2026-10-30 | 3.4.5 补：内部 CA 生成同样按 RSA ≥ 3072，避免自签根过不了自身的导入校验 |
+| V1.02 | 2026-10-30 | 3.4.5 补导入六项校验（解析、有效期、密钥强度、签名算法、CA 约束、吊销）与开放导入形态；明确与 3.4.2 的链校验是两套规则 |
+| V1.01 | 2026-10-30 | 新增 3.4.5 信任库：`oms-trust`（出站）与 `oms-ca`（入站）分开建模，系统管理员可导入外部根并留痕；3.4.2 红线、3.4.3 挂载、4.5 权限、7.2 清单、2.7 索引同步 |
+| V1.00 | 2026-10-30 | 4.15 内部 CA 由「优先复用」改为「新建不复用」（迁移侧决定）；换锚影响与过渡窗口见 `OMS-MIG-001` 10.2.1 |
+| V0.99 | 2026-10-30 | 3.1.5 补：安全 / 审计管理员组不关联任何资源组（职责全在 `fn.*`），系统管理员组按需给定 |
 | V0.98 | 2026-10-30 | 3.1.4 澄清 `builtin_locked` 只约束角色绑定，不约束成员与资源组关联（配合 MIG-001 中旧管理员组直迁内置组） |
 | V0.97 | 2026-10-30 | `OMS-MIG-001` V0.1 建册（存量迁移 12 章）；9.5 状态更新。本文正文无设计变更 |
 | V0.96 | 2026-10-30 | 密钥体系收敛为两场景通用：常驻三个 KSUser（`oms` 新增、`nginx` / `modelenginepublic` 迁移复用），新密文一律归 `oms`；旧体系其余用户降为迁移期临时挂载（3.5.1）；初始化明确 `generate` / `adopt` 两种模式（3.5.2）；Secret 统一为 `kmc-<user>` 并合并校验文件（3.5.3、4.5、7.2） |

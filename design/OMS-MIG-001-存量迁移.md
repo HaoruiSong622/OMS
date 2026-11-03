@@ -185,19 +185,76 @@ flowchart TB
 
 ### 1.6 证书：JKS / PKCS#12 混合
 
+#### 1.6.1 概览
+
 ```mermaid
 flowchart LR
   CA["内部 CA<br/>cube-security-serverca<br/>已是 PEM"] --> JKS["服务证书<br/>framework.jks / platform.jks"]
-  CA --> P12["global_identity.p12"]
-  CA --> NGX["Nginx 证书<br/>cube-security-cert-nginx"]
-  PW["私钥口令<br/>cube-security-priv<br/>KMC 加密"] -.->|"解密后使用"| JKS
-  PW -.-> P12
+  CA --> P12["服务证书<br/>global_identity.p12"]
+  CA --> NGX["Nginx 对外证书<br/>cube-security-cert-nginx"]
+  PW["私钥口令<br/>cube-security-priv<br/>KMC 加密"] -.->|"tomcat 或 modelenginepublic"| JKS
+  PW -.->|"同上"| P12
+  PW -.->|"nginx"| NGX
 ```
 
-- 证书主要装在 **ConfigMap**（不是 Secret），路径 `cube-security-cert-*`；
-- `oms-extension` 是 JKS + PKCS#12 混合，迁移工作量最大的单体；
-- **内部 CA 已经是 PEM**——这意味着不一定要重建 CA，可以直接复用；
-- 私钥口令仍然是 KMC 加密的（`tomcat` / `nginx` / `modelenginepublic` 用户）。
+- **内部 CA 已经是 PEM，但迁移时不复用**——新建一套（10.2），旧 CA 保留到 P7；
+- 私钥口令仍是 KMC 加密的，但**三组证书用的是不同的 KMC 用户**：服务证书（JKS / P12）用 `tomcat` 或 `modelenginepublic`，Nginx 对外证书用 `nginx`。这解释了为什么迁移期必须临时挂载 `tomcat`、而 `nginx` 要长期保留。
+
+#### 1.6.2 证书是怎么产生和分发的
+
+一句话：**证书不是随包发的，是 Pod 启动时现场生成的**。生成完由部署机拷出来做成 Secret，Pod 再从 Secret 挂载回去用。
+
+```mermaid
+flowchart TB
+  subgraph P["平台层（本仓库外）"]
+    CA["内部 CA（PEM）"]
+    CS["cube-security-cert-* / priv"]
+  end
+  subgraph X["oms-extension 启动"]
+    GEN["initContainer 现场生成<br/>P12 + JKS"]
+    TMP["emptyDir /certPersonal"]
+    GEN --> TMP
+  end
+  subgraph D["部署机"]
+    EXP["kubectl cp 导出"]
+    MK["--init-kmc 生成主密钥"]
+    SEC["create secret"]
+    CMK["create configmap"]
+    EXP --> SEC
+    MK --> CMK
+  end
+  TMP -.->|"① 拷出"| EXP
+  subgraph K["K8s 资源"]
+    S1["Secret<br/>oms-extension-cert-secret"]
+    S2["ConfigMap kmc-ks"]
+    S3["ConfigMap cube-security-*"]
+    SEC --> S1
+    CMK --> S2
+    CS --> S3
+  end
+  subgraph B["业务 Pod"]
+    M["挂载证书 + 主密钥"]
+    U["Spring server.ssl / httpClient.ssl<br/>gRPC mTLS 到 kmsservice"]
+    S1 --> M
+    S2 --> M
+    S3 --> M
+    M --> U
+  end
+```
+
+主密钥走的是另一条平行链路：`install.sh --init-kmc` 在部署机本地 `create_mk(0)` 生成，再 `kubectl create configmap kmc-ks` 送进集群。**两条链互不相干，但 Pod 两样都要挂**——证书要口令，口令要用主密钥解。
+
+> 完整到文件行号的版本（init.sh:46 / init.sh:65-92 / install.sh:457-468 等）见**附录 A**，正文只保留这张能看懂的图。
+
+#### 1.6.3 从这张图读出的五件事
+
+| # | 事实 | 对迁移的含义 |
+| --- | --- | --- |
+| 1 | 服务证书是 **Pod 启动时由 initContainer 现场生成**（`generate_ray_cert.sh` → pkcs12 → generate_java_jks.sh），不是仓库里的静态文件 | 所以"迁移证书"没有意义，**只能重签**（10.1） |
+| 2 | 生成完由部署机 `kubectl cp` 拷出，再 `kubectl create secret`，Secret 是**运行期快照** | Secret 里那 16 个 key 不迁；要的是它能被重新生成 |
+| 3 | `kmc-ks` 由 `install.sh --init-kmc` → `create_mk(0)` 生成，落在部署机本地目录再 `kubectl create configmap` | 印证 7.1 的 `generate` 模式可行；也说明**新装时主密钥本可以随时重建，迁移时绝不可以** |
+| 4 | `cube-security-*` 系列 ConfigMap 的箭头都来自 **OMS 平台层（omsservice，本仓库外）** | 归属边界见 10.5；正因为归属在平台层，**内部 CA 不复用、直接新建**（10.2） |
+| 5 | `cert-monitor` 只是 `mtime` 轮询 `identity.cnf`，**不签发、不续签** | 印证"无自动续期"，也说明它下线不影响任何证书能力 |
 
 ### 1.7 上层业务是怎么用它的
 
@@ -383,8 +440,8 @@ flowchart TB
 
 | 对象 | 常规 | 迁移场景的例外 |
 | --- | --- | --- |
-| 内置管理员组 | 预置角色绑定 | 系统管理员组**接收迁移账户并补全资源组**（6.3）；安全 / 审计组仍为空 |
-| 内置账户密码 | 部署期置初始密码 | **不迁旧密码**（旧库是占位符），首登强制改密 |
+| 内置管理员组 | 预置角色绑定 | 三个内置组**各接各自的旧账户**（6.3）：系统管理员组补全资源组，安全 / 审计组**不关联任何资源组** |
+| 内置账户密码 | 部署期置初始密码 | **照常迁哈希**：格式合法就原样搬（`need_change_pwd` 一并迁）；格式非法才回退到初始密码 |
 
 ### 4.3 ESN 接续
 
@@ -452,7 +509,10 @@ flowchart LR
 ### 5.3 历史密码与内置账户
 
 - **历史密码**：迁数据、不迁表结构。不迁则用户改密时绕过历史校验，密码策略形同失效。
-- **内置账户**：`admin` / `secadmin` / `secauditor` / `openapi` 沿用旧 UUID，密码不迁；`internal_admin` 新底座没有这个内置账户，按普通账户处理——它的服务间调用能力由 `m2mAccess` + `openAPI` 业务角色承接。
+- **内置账户**：`admin` / `secadmin` / `secauditor` / `openapi` 沿用旧 UUID，**密码哈希照常搬迁**——除非哈希是占位符或格式非法（说明该账户在旧库里从未登录过），此时才回退到部署期初始密码。`need_change_pwd` 一并迁，否则「沿用旧密码」会被首登改密抵消。
+- **`internal_admin`**：新底座没有这个内置账户，按普通账户处理——它的服务间调用能力由 `m2mAccess` + `openAPI` 业务角色承接。
+
+> 为什么不能一律重置密码：`admin` 是客户天天在用的账户，割接时把它的密码改掉，等于让客户在切换当晚登不进去。占位符只存在于「建完库还没人登录」的瞬间，不能拿出厂状态描述客户现场。
 
 ### 5.4 外部账号
 
@@ -464,23 +524,43 @@ flowchart LR
 
 ## 6. 授权模型迁移
 
-### 6.1 聚类：以「角色集合 × 资源组集合」为键
+### 6.1 完整判定：一个账户最后进哪个组
+
+一张图看完。左边是「这个人属于哪种人」，右边是「落到哪个组、给哪些资源」。
 
 ```mermaid
 flowchart TB
-  A["遍历旧库活跃账户"] --> B["算画像<br/>key = (角色集合, 资源组集合)"]
-  B --> C{"在 admin_group？"}
-  C -->|"是，且含 systemAdmin"| D["进内置系统管理员组<br/>补全全部资源组"]
-  C -->|"是，但无 systemAdmin"| E["进 UG_ADMIN_FULL<br/>保留原角色 + 全部资源组"]
-  C -->|"否"| F["按 key 分组"]
-  F --> G["每组建一个用户组<br/>绑角色 + 关联资源组与 public_group"]
-  D --> H["补准入角色<br/>login_type 位 1/2"]
-  E --> H
-  G --> H
-  H --> I{"三权冲突检查"}
-  I -->|"冲突"| J["拒绝并报告，人工拆分"]
-  I -->|"通过"| K["写库"]
+  A["遍历旧库活跃账户"] --> B{"在 admin_group？"}
+  B -->|"是"| C{"角色含 systemAdmin？"}
+  C -->|"是"| D["内置系统管理员组<br/>角色绑定不动<br/>补全为全部资源组"]
+  C -->|"否"| E["UG_ADMIN_FULL<br/>原角色 + 全部资源组<br/>不授予 systemAdmin"]
+  B -->|"否"| F{"角色集合恰好是<br/>单个管理员角色？"}
+  F -->|"SEC_ADMIN"| G["内置安全管理员组<br/>不关联任何资源组"]
+  F -->|"SEC_AUDITOR"| H["内置审计管理员组<br/>不关联任何资源组"]
+  F -->|"否：普通账户 / 多角色 /<br/>不在 admin_group 的系统管理员"| I["按画像聚类<br/>key = (角色集合, 资源组集合)"]
+  I --> J["自建用户组<br/>绑角色 + 关联 rg_set ∪ public_group"]
+  D --> K["补准入角色<br/>位 1→humanAccess，位 2→m2mAccess"]
+  E --> K
+  G --> K
+  H --> K
+  J --> K
+  K --> L{"三权冲突？"}
+  L -->|"是"| M["拒绝并报告，人工拆分"]
+  L -->|"否"| N["写库"]
 ```
+
+图里有一处看着不对称，是有意的：**安全 / 审计管理员直接进内置组，系统管理员不一定**。因为系统管理员分三种情况（在 `admin_group` 里 / 不在但角色是管理员 / 混进来的非管理员），资源范围各不相同，必须分开处理；安全 / 审计管理员的职责全在 `fn.*`，不涉及业务资源，不需要再区分。
+
+六个出口的含义：
+
+| 出口 | 谁进来 | 角色 | 资源组 |
+| --- | --- | --- | --- |
+| 内置系统管理员组 | 在 `admin_group` 且是系统管理员 | 组已预置，不动 | **补全为全部** |
+| `UG_ADMIN_FULL` | 在 `admin_group` 但不是系统管理员 | 保留原角色 | 全部 |
+| 内置安全管理员组 | 角色恰好 `SEC_ADMIN` | 组已预置，不动 | **不关联** |
+| 内置审计管理员组 | 角色恰好 `SEC_AUDITOR` | 组已预置，不动 | **不关联** |
+| 自建用户组 | 其余全部账户 | 画像里的角色集合 | 画像里的资源组 ∪ `public_group` |
+| 拒绝 | 用户组内出现两个管理员角色 | — | 人工拆分 |
 
 三条补充规则：
 
@@ -496,30 +576,24 @@ flowchart TB
 
 ### 6.3 `admin_group` 的特殊处理
 
-旧 `admin_group` 的语义是"在里面就有全资源访问"，而它里面**不只有系统管理员**——别人也可能被加进去蹭特权。
+旧 `admin_group` 的语义是"在里面就有全资源访问"，而它里面**不只有系统管理员**——别人也可能被加进去蹭特权。这一条如果处理错，要么把非管理员提权，要么把管理员的资源范围砍掉。
 
-```mermaid
-flowchart TB
-  S["旧 admin_group 成员"] --> Q{"角色含 systemAdmin？"}
-  Q -->|"是"| A["进内置系统管理员组<br/>角色绑定不动<br/>补全为全部资源组"]
-  Q -->|"否"| B["新建 UG_ADMIN_FULL<br/>保留原有角色<br/>关联全部资源组<br/>不授予 systemAdmin"]
-  A --> R["保持全资源访问"]
-  B --> R
-```
+判定路径已经画在 **6.1 的图里**（最上面两条分支），这里只解释为什么这么判：
 
 | 账户情形 | 去向 | 角色 | 资源组 |
 | --- | --- | --- | --- |
 | 在 `admin_group`，角色含 `systemAdmin` | 内置系统管理员组 | 组已预置，不动 | **补全为全部资源组** |
 | 在 `admin_group`，无 `systemAdmin` | `UG_ADMIN_FULL` | 保留原有角色 | 全部资源组 |
 | 不在 `admin_group` 的系统管理员 | 画像聚类 | `systemAdmin` | 本组 + `public_group`，不扩权 |
-| 安全 / 审计管理员 | 画像聚类 | 对应管理员角色 | 本组 + `public_group` |
+| 安全 / 审计管理员（角色单纯） | 内置安全 / 审计管理员组 | 组已预置，不动 | **不关联任何资源组** |
 
-四条说明：
+五条说明：
 
 - **内置组可以收人**：`builtin_locked` 锁的是**角色绑定**，加成员、补资源组都不在它的约束内；
 - **必须补全资源组**：内置系统管理员组默认不关联任何资源组（全新安装时资源组还没注册），不补就让人丢掉全部业务数据权限——不是扩大，是缩小；
 - **只有混入者才建 `UG_ADMIN_FULL`**：多数局点 `admin_group` 里全是管理员，这条路径走不到；
-- **安全 / 审计管理员不进内置组**：他们的资源范围各不相同，进内置组反而丢范围。内置的安全 / 审计组迁移后仍为空，是预期结果。
+- **安全 / 审计管理员直接进内置组，且不关联资源组**：他们的职责全在 `fn.*`（策略、账户、审计查询），没有业务数据可看——旧系统里也不存在「安全管理员资源组」这种东西。给他们挂资源组只会扩大攻击面。
+- **角色不单纯时才走聚类**：如果旧 `secadmin` 还挂着 `READ_ONLY` 之类的次要角色，直接塞进内置组会丢掉那个角色，此时按画像聚类单独建组。
 
 ### 6.4 角色与权限点
 
@@ -776,15 +850,43 @@ flowchart TB
 | 对象 | 做法 | 理由 |
 | --- | --- | --- |
 | 服务间证书 | **重签** | 现有 mTLS 不认证身份，没有谁 pin 它；重签比转换 JKS 干净 |
-| 内部 CA | **优先复用**（已是 PEM） | 只换叶子不换锚，客户端信任库一字不改 |
+| 内部 CA | **新建，不复用** | 归属在平台层，复用要跨团队协调；且旧 CA 无 CRL/OCSP，复用等于把旧问题带进新体系 |
 | Nginx 对外证书 | **维持原状，不动** | 换证书要终端重新信任，客户侧有额外动作 |
 
-### 10.2 内部 CA 能不能复用
+### 10.2 内部 CA：一律新建，不复用
 
-判断条件只有一条：**现有 CA 的 SAN 覆盖新底座的服务名**。
+**决策：迁移时不复用旧内部 CA**，由新底座的 `cert-rotate` 重新生成一套（CA + 两张叶子），旧 CA 保留到 P7 后归档。
 
-- 覆盖 → 复用，`ca.key` / `ca.pem` 搬进新 Secret；
-- 不覆盖 → 重建，此时**所有终端需要重新导入根证书**——这是客户侧动作，必须先确认。
+三条理由：
+
+1. 旧 CA 的归属在平台层（10.5），复用要跨团队确认私钥位置、SAN、有效期，协调成本高于重签；
+2. 旧 CA 是 100 年自签、无 CRL / OCSP，一旦复用，这堆问题会原样带进新体系；
+3. 服务证书本来就要重签（10.1），既然重签，换锚没有额外动作。
+
+**代价要说清楚，但比想象的小**：
+
+| 对象 | 影响 |
+| --- | --- |
+| 终端用户 | **无影响**——Nginx 对外证书不换（O-06），它和内部 CA 没有关系 |
+| 集群内业务 Pod | 需预置新根，由 Helm 挂载 `oms-ca` 自动完成，不需要人工导入 |
+| 旧 CA | 保留到 P7，不删；回滚时还要用它 |
+
+### 10.2.1 换锚期间的信任窗口
+
+新旧 CA 并存会有一个窗口：老 Pod 只信旧根，新 Pod 拿的是新证书，两边互验会失败。所以顺序必须卡死：
+
+```mermaid
+flowchart LR
+  A["P4 签发新 CA + 新叶子<br/>写入 Secret，**不重启业务 Pod**"] --> B["P5 业务全量重启<br/>同时加载新证书与新根"]
+  B --> C["P7 后旧 CA 归档"]
+  A -.->|"若期间必须重启某 Pod"| D["临时把旧根加入信任库<br/>过渡开关，P7 关闭"]
+```
+
+- **P4 只签发、不重启**——新证书准备好放在 Secret 里，但不让任何 Pod 提前加载；
+- **P5 与业务升级一起全量重启**，新旧同时生效，窗口为零；
+- 如果 P4 到 P5 之间业务 Pod 因故必须重启，把**旧根临时加进信任库**（过渡开关），P7 后关闭并删除。
+
+这条也解释了为什么割接必须全量重启、不能分批——**分批重启就是分批换锚，中间必然出现互不信任的窗口**。
 
 ### 10.3 旧 keystore 怎么处理
 
@@ -796,6 +898,53 @@ flowchart TB
 ### 10.4 Nginx 证书"不动"的含义
 
 不动 = 证书文件、私钥、口令全部原样：搬进 `nginx-tls`，口令仍由 `nginx` 用户保护。HTTPS 配置不变，浏览器行为不变（自签证书仍显示"不安全"，客户可后续自行导入）。
+
+---
+
+### 10.5 证书资源的归属边界
+
+1.6.2 那张图暴露了一件容易被忽略的事：**证书资源分属两个 owner**。搞混了就会在迁移脚本里删掉别人的东西。
+
+| 资源 | 创建者 | 迁移时我们能做什么 |
+| --- | --- | --- |
+| `oms-extension-cert-secret` | 本仓库 `install.sh`（`kubectl create`） | 可读可分析；**内容不迁**（服务证书重签） |
+| `kmc-ks` | 本仓库 `install.sh --init-kmc` | **必须复刻**，主密钥不能丢 |
+| `cube-security-cert-*` | **平台层 `omsservice`** | 只读；改动需平台配合 |
+| `cube-security-priv`（11 份 `.conf`） | **平台层** | 只读；口令文件的真身在平台侧 |
+| `cube-security-truststore` | **平台层** | 只读；内容**要迁**（10.6），但不是整包搬 |
+| `cube-security-serverca`（内部 CA） | **平台层** | 只读；**复用 CA 需要平台确认 SAN 与归属**（10.2） |
+| `cube-paas-*`（各用户主密钥） | **平台层** | 只读；复刻需平台授权 |
+
+三条落地纪律：
+
+- **迁移脚本禁止对 `cube-security-*` 与 `cube-paas-*` 执行 `delete` / `patch`**，只允许 `get`；
+- 内部 CA 能不能复用（10.2），不是新底座单方面能定的——**要平台层确认 `cube-security-serverca` 的 SAN 是否覆盖新服务名**；
+- `oms-extension` 下线（P7）时，删的只是它自己的 Deployment 与那份 Secret，平台层的证书资源一律不动。
+
+### 10.6 旧信任库的迁移
+
+旧 `cube-security-truststore`（`ca_truststore.jks`）在旧底座上**没有任何 Pod 读取**，是死配置。但它的内容代表「旧系统信任哪些根」，丢掉它等于丢掉客户侧的信任关系——新底座要连 CA 服务器、上游 CAS、业务接口，这些根迟早要用。
+
+```mermaid
+flowchart LR
+  JKS["ca_truststore.jks"] --> PW["用 cube-security-priv 里的口令打开"]
+  PW --> EXP["逐条导出为 PEM"]
+  EXP --> CLS{"分类"}
+  CLS -->|"旧内部 CA 根"| DROP1["不迁<br/>CA 已重建（10.2）"]
+  CLS -->|"叶子证书"| DROP2["不迁<br/>信任库只放 CA"]
+  CLS -->|"客户 / 第三方 CA"| KEEP["按 SHA-256 指纹去重<br/>写入 oms-trust"]
+  KEEP --> REC["记录来源 / 指纹 / 有效期"]
+```
+
+五条规则：
+
+1. **丢弃的也要记录**。尤其是被判为「旧内部 CA 根」的那条——将来某条出站调用失败时，要能查到「不是漏迁，是故意不迁」。
+2. **过期根拒绝导入，但必须记录**。校验规则见 HLD 3.4.5（有效期、密钥强度、签名算法、CA 约束）；不通过的不进库，但要进清单——静默丢弃会让客户某条调用突然失败，且查不出原因。
+3. **证书与私钥分离**：信任库只有公钥证书，不涉及私钥；如果发现旧库里混了私钥，说明该文件用法不规范，单独记录。
+4. **验证方式不依赖外部服务**：不做连通性测试（现场不一定接了 CA 服务器，也不一定有上游 CAS）。验证就是按 HLD 3.4.5 的五项逐条核对**证书自身**：能解析、未过期、密钥强度达标、签名算法安全、CA 约束正确。**不校验吊销状态**——本期没有 CRL / OCSP 通道，旧库里是否有已吊销的根，由客户在迁移前自行确认。
+5. **导入形态不做限制**：旧库里可能是根、可能是中间 CA、也可能是链，一律接受；**不校验链的完整性**，中间 CA 单独导入是合法的。
+
+迁移完成后，客户后续要新增受信根，走证书管理页的「导入信任 CA」（HLD 3.4.5）——OMS 对 `oms-trust` 这个 ConfigMap 有写权限，页面导入直接落盘，不需要再动部署。
 
 ---
 
@@ -828,7 +977,7 @@ sequenceDiagram
 - [ ] P3 对账全绿，报表已归档
 - [ ] 抽样登录通过（本地 / SSO / 锁定账户各若干）
 - [ ] 三个 KMC 用户自检通过，**mock 实现已被替换**
-- [ ] 服务证书已重签，业务 Pod 能完成 mTLS 握手
+- [ ] 服务证书已重签；**P5 全量重启后**业务 Pod 之间、业务与 OMS 之间 mTLS 握手正常
 - [ ] Nginx 证书与原状一致，`nginx -t` 通过
 - [ ] 权限矩阵抽查：三类管理员、`UG_ADMIN_FULL`、普通用户、`openAPI` 各一人
 - [ ] ESN 与旧值一致，License 状态正常
@@ -933,10 +1082,121 @@ flowchart TB
 
 ---
 
+---
+
+## 附录 A. 旧证书体系完整链路（详版）
+
+> 正文 1.6.2 只保留简化图；这一版是旧底座团队提供的原件，标到脚本行号，供实施时定位。评审不需要读它。
+
+```mermaid
+flowchart TB
+  subgraph OMSPlatform["OMS 平台层（omsservice，本仓库外）"]
+    OMSInject["平台注入"]
+  end
+  subgraph OMSExt["oms-extension Deployment"]
+    OMSInit["init-root initContainer<br/>init.sh:46"]
+    GenRay["generate_ray_cert.sh<br/>（ConfigMap cert-kmc-shell-configmap 下发）"]
+    EmptyDir["emptyDir /certPersonal/"]
+    InitSh65["init.sh:65-92<br/>openssl pkcs12 -export"]
+    InitSh109["init.sh:109<br/>source generate_java_jks.sh"]
+    OMSInit --> GenRay --> EmptyDir
+    EmptyDir --> InitSh65 --> EmptyDir
+    EmptyDir --> InitSh109 --> EmptyDir
+  end
+  subgraph DeployMachine["部署机"]
+    InstallSh["install.sh:457-468"]
+    KubectlCp["kubectl cp /certPersonal ./certPersonal"]
+    KubectlCreate["kubectl create secret generic<br/>oms-extension-cert-secret --from-file=..."]
+    KubectlPatch["kubectl patch deployment cert-monitor"]
+    InstallShInitKmc["install.sh:284-294<br/>--init-kmc 触发<br/>install_kmc + createKmcKsConfigmap"]
+    KmcAdapter["kmc-adapter/install.sh true modelenginepublic<br/>python kmc.kmc.API().create_mk(0)"]
+    KmcFiles["部署机本地 /opt/huawei/fce/paas/modelenginepublic/<br/>data.1 / data.2 / data.1.sm3 / data.2.sm3"]
+    KubectlCreateKmc["kubectl create configmap kmc-ks<br/>--from-file /opt/huawei/fce/paas/modelenginepublic/"]
+    InstallSh --> KubectlCp --> KubectlCreate --> KubectlPatch
+    InstallShInitKmc --> KmcAdapter --> KmcFiles --> KubectlCreateKmc
+  end
+  EmptyDir -.->|"① kubectl cp 拷出"| KubectlCp
+  subgraph K8sResources["K8s 资源"]
+    CertSecret["Secret: oms-extension-cert-secret<br/>16 个 key（pwd.txt / p12 / jks / PEM / cnf）<br/>manager=kubectl-create"]
+    CMcertPlatform["ConfigMap: cube-security-cert-platform<br/>（framework.jks）"]
+    CMcertSvc["ConfigMap: cube-security-cert-服务名<br/>（gateway / kms / nacos / redis / gaussdb）"]
+    CMtrust["ConfigMap: cube-security-truststore<br/>（ca_truststore.jks，dead config）"]
+    CMpriv["ConfigMap: cube-security-priv<br/>（11 份 .conf，含 tomcat.conf）"]
+    CMkmc["ConfigMap: kmc-ks<br/>（data.1 / data.2 主密钥）<br/>manager=本仓库 install.sh"]
+    KubectlCreate --> CertSecret
+    KubectlCreateKmc --> CMkmc
+    OMSPlatform --> CMcertPlatform
+    OMSPlatform --> CMcertSvc
+    OMSPlatform --> CMtrust
+    OMSPlatform --> CMpriv
+  end
+  subgraph BizPods["业务 Pod（gateway / repository / inference / finetune / postgresql …）"]
+    PodCert["/cert/internal/<br/>（从 Secret 投射）"]
+    PodPlatform["/opt/huawei/fce/runtime/security/server_cert/platform/<br/>（framework.jks）"]
+    PodPriv["/opt/huawei/fce/runtime/security/priv/<br/>（tomcat.conf 等）"]
+    PodTrust["/opt/huawei/fce/runtime/security/truststore/<br/>（dead config）"]
+    PodKmc["/opt/huawei/fce/paas/modelenginepublic/<br/>（主密钥）"]
+    Spring["Spring Boot<br/>server.ssl.*（HTTPS 服务端）<br/>httpClient.ssl.*（Feign 客户端）"]
+    Crypt["CryptClientUtils<br/>gRPC mTLS 到 kmsservice:18400"]
+    CertSecret --> PodCert
+    CMcertPlatform --> PodPlatform
+    CMpriv --> PodPriv
+    CMtrust --> PodTrust
+    CMkmc --> PodKmc
+    PodCert --> Spring
+    PodKmc --> Spring
+    PodPlatform --> Crypt
+    PodPriv --> Crypt
+    PodKmc --> Crypt
+  end
+  subgraph CertMonitorPod["cert-monitor Pod"]
+    CMpy["Python mtime 轮询器<br/>监控 /cert/internal/global/identity/identity.cnf"]
+    CertSecret --> CMpy
+  end
+  subgraph KMSC["kmsservice:18400（OMS 平台 KMC 加解密服务）"]
+    KMSCsvc["gRPC mTLS 服务端"]
+  end
+  Crypt -.->|"gRPC mTLS 出站"| KMSCsvc
+  subgraph OtherOMS["其他 OMS 服务（Framework / Monitor）"]
+    OtherSvc["HTTPS 服务端"]
+  end
+  Spring -.->|"Feign HTTPS 出站"| OtherSvc
+  style CertSecret fill:#fff3cd
+  style CMcertPlatform fill:#d1ecf1
+  style CMkmc fill:#d1ecf1
+  style EmptyDir fill:#e2e3e5
+  style KMSCsvc fill:#d1ecf1
+```
+
+**怎么读这张图**（三个层次）：
+
+| 层 | 关键节点 | 说明 |
+| --- | --- | --- |
+| 生成 | `init-root initContainer` → `generate_ray_cert.sh` → `emptyDir /certPersonal/` | 证书在 Pod 启动时现场生成，不是静态文件 |
+| 导出 | 部署机 `install.sh:457-468` → `kubectl cp` → `kubectl create secret` | Secret 是运行期快照，16 个 key 里 P12 / JKS / PEM 混放 |
+| 分发 | Secret / ConfigMap → 业务 Pod 各挂载点 → Spring SSL 与 `CryptClientUtils` | 业务 Pod 同时挂证书与 `modelenginepublic` 主密钥 |
+
+两条平行链路在图里是分开的：
+
+- **证书链**：`initContainer 生成` → `kubectl cp 导出` → `oms-extension-cert-secret`；
+- **主密钥链**：`install.sh --init-kmc` → `create_mk(0)` → 部署机本地目录 → `kubectl create configmap kmc-ks`。
+
+图中标 `dead config` 的 `cube-security-truststore` 没有任何 Pod 读取——但它的内容要迁（10.6）。
+
 ## 变更记录
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| V1.4 | 2026-10-30 | 6.1 换成完整判定大图（六个出口 + 三个管理员角色的分支），6.3 去掉重复的小图改为引用；补「为什么安全/审计进内置组、系统管理员不一定」的解释 |
+| V1.3 | 2026-10-30 | 1.6.2 换成简化图（正文可读），原详版图移入附录 A 并补「三个层次」读图说明 |
+| V1.2 | 2026-10-30 | 10.6 补一句：迁移后新增受信根走页面导入，OMS 对 `oms-trust` 有写权限 |
+| V1.1 | 2026-10-30 | 10.6 校验项由六项改为五项，吊销状态不再校验（与 HLD 3.4.5 对齐） |
+| V1.0 | 2026-10-30 | 10.6 校验方式改为「按 3.4.5 的六项本地校验」，删除与 CA 服务器 / 上游 CAS 建连的验证（现场不一定存在）；过期根由「迁入但告警」改为「拒绝但记录」 |
+| V0.9 | 2026-10-30 | 新增 10.6 旧信任库迁移（JKS → PEM，分类规则：旧内部 CA 根与叶子不迁、客户根迁入 `oms-trust`）；10.5 的 truststore 行由「不涉及」改为「要迁」 |
+| V0.8 | 2026-10-30 | 内部 CA 决策改为「一律新建、不复用」：重写 10.2，新增 10.2.1 换锚信任窗口（P4 只签发不重启，P5 全量重启）；1.6 与 10.1 同步 |
+| V0.7 | 2026-10-30 | 1.6 重写为三节：概览、旧底座证书实链路全图（平台层 → initContainer 生成 → 部署机导出 → K8s 资源 → 业务 Pod → KMS）、五条读图结论；新增 10.5 证书资源归属边界 |
+| V0.6 | 2026-10-30 | 1.6 证书图补上「Nginx 证书口令」这条线（原图漏画），并点明三组证书用的是不同 KMC 用户（tomcat / modelenginepublic / nginx） |
+| V0.5 | 2026-10-30 | 修正两处：①安全 / 审计管理员直接进内置组、不关联任何资源组（原写「仍为空」并走聚类）；②内置账户密码改为照常迁哈希，仅在占位符或非法格式时回退初始密码（原写「一律不迁」） |
 | V0.4 | 2026-10-30 | 改为自包含：新增第 1 章旧系统现状、第 2 章新系统目标态，全篇补 26 张 mermaid 图（组件、ER、模型对照、聚类、决策树、时序、回滚）；4.3 / 9.2 / 9.3 明确标注「不在本文设计，由旧底座团队实施时确认」 |
 | V0.3 | 2026-10-30 | 4.3 改为条件式 `admin_group` 迁移；2.2 与 6.5 同步 |
 | V0.2 | 2026-10-30 | 9.6 旧产物卷改为「不迁但永久保留」；第 12 章补「回滚不动旧卷」 |
