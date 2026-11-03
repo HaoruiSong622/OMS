@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | OMS-HLD-001（评审版） |
-| 版本 | V1.08（评审稿） |
+| 版本 | V1.09（评审稿） |
 | 编写日期 | 2026-10-27 |
 | 读者 | 评审人、架构师 |
 | 上游依据 | `docs/requirements/OMS-需求规格说明书.md` 及 18 个模块分册（77 条 FR） |
@@ -1302,16 +1302,58 @@ sequenceDiagram
 
 **先看数据结构：谁引用谁**
 
-| 从 | 到 | 基数 | 含义 |
-| --- | --- | --- | --- |
-| `module_registry` | `menu` | 1:N | 一个模块声明多个菜单项 |
-| `module_registry` | `api_permission` | 1:N | 一个模块声明多条路由 |
-| `menu` | `permission` | N:1 | 每个菜单项**绑定一个**权限点 |
-| `api_permission` | `permission` | N:1 | 每条路由**绑定一个**权限点 |
-| `role_permission` | `permission` | N:1 | 角色引用权限点 |
-| `user_group_role` | `role` | N:1 | 用户组绑定角色 |
+```mermaid
+erDiagram
+  module_registry ||--o{ menu : "声明"
+  module_registry ||--o{ api_permission : "声明"
+  permission ||--o{ menu : "被菜单绑定"
+  permission ||--o{ api_permission : "被路由绑定"
+  permission ||--o{ role_permission : "被角色引用"
+  role ||--o{ role_permission : "拥有"
+  role ||--o{ user_group_role : "被绑定"
+  user_group ||--o{ user_group_role : "绑定"
 
-这里只有两种关系，不要混：**声明**（模块注册表声明出菜单行与路由行，是「谁产生谁」）和**引用**（N:1，箭头指向被引用的表）。按钮没有独立的表，它只是 `permission` 里 `type=BUTTON` 的一行，由前端代码按编码引用。
+  permission {
+    string code UK "全局唯一，废弃不复用"
+    string type "MENU / BUTTON / API / CAP"
+    string parent "父级编码，可空"
+    string i18n_key
+  }
+  menu {
+    string code
+    string route
+    string permission_code FK "一个菜单一个权限点"
+  }
+  api_permission {
+    string method
+    string path_pattern
+    string permission_code FK "一条路由一个权限点"
+    string resource_type
+    string action
+  }
+  role_permission {
+    string role_code FK
+    string permission_code FK
+  }
+  user_group_role {
+    string group_id FK
+    string role_code FK
+  }
+  module_registry {
+    string module PK
+    string version
+    string route_prefix
+    string static_path
+    string resource_type
+  }
+```
+
+看这张图只记两件事：
+
+1. **两种箭头**：`module_registry` 出去的实线是**声明**（模块产生菜单行与路由行，是「谁产生谁」）；指向 `permission` 的是**引用**（N:1，被引用方是唯一的真值来源）。
+2. **按钮不是表**：它只是 `permission` 里 `type=BUTTON` 的一行，由前端代码按编码引用——没有 `button` 表，也不需要。
+
+`permission` 是这张图的枢纽：菜单、路由、角色都指向它，所以「同一个权限点」在界面与接口两侧天然对齐；改名、废弃、复用都要在它这里统一裁决。
 
 **再看运行时：两条独立的读路径**
 
@@ -2558,6 +2600,7 @@ OMS 与上层业务之间的接口只有六个，全部固定路径、固定语�
 | V0.87 | 2026-10-27 | 终校：3.4.3 挂载命名与 3.5.3/4.5 统一为 `oms-tls`/`oms-ca`（ConfigMap）；第 5 章五处误引 4.10/4.1 改为 3.5（信任边界），6.2 误引 3.1.4 改为 3.1.5，O-06 误引 4.9 改为 4.13，Nginx 证书过期缓解误引 3.4.3 改为 3.4.2；3.4.1「五条规则」改四条、7.3 停用规则拆出校验清单、8.2「三条约束」改两条（V0.77 已删时间范围条）、7.4 场景计数表述修正；8.1 域清单补 `sso`/`metering`/`registry`；3.8.2 错误码示例对齐 8.2 的 `AUTH_101`、3.8.3 profile 路径补 `/oms/ui` 前缀；FR-ACC 引用 001 改 004/007（终止会话的出处）；前置事项补列配套另册 `OMS-INT-001` / `OMS-TST-001`；变更记录表合并被空行截断的两段 |
 | V0.88 | 2026-10-27 | 准入角色移入 3.1.5 与角色建模合并，3.2.5 只保留登录通道判定；3.1.5/3.1.6 顺延 |
 | V0.89 | 2026-10-27 | 准入角色简化为 `m2mAccess`（token）与 `humanAccess`（页面），通道与权限分离；每个用户组至少绑定一个准入角色 |
+| V1.09 | 2026-10-30 | 3.8.3 的引用关系表换成 ER 图（六张表 + 八个关系，区分「声明」与「引用」），保留两句读图说明 |
 | V1.08 | 2026-10-30 | `nginx` Service 也打 keep（HAProxy 后端是它的 clusterIP，重建即断），明确**不固定 clusterIP** 以免与地址池冲突；7.2 的 keep 说明按「内容可变 / 身份须稳定」两类重写 |
 | V1.07 | 2026-10-30 | `nginx-routes` 同样标注 `helm.sh/resource-policy: keep`（模块安装 Job 写入，升级会抹掉全部模块路由）；7.2 与 7.3 同步 |
 | V1.06 | 2026-10-30 | `nginx-tls` 与 `oms-trust` 标注 `helm.sh/resource-policy: keep`（两者都会被页面改写，Helm 升级会冲掉）；3.4.5 与 7.2 同步 |
